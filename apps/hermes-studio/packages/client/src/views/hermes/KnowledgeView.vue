@@ -7,6 +7,7 @@ import {
   NInput,
   NModal,
   NPopconfirm,
+  NSelect,
   NSpin,
   NTabPane,
   NTabs,
@@ -19,11 +20,13 @@ import {
   dismissReadingCandidate,
   fetchKnowledgeDraftDetail,
   fetchKnowledgeGraph,
+  fetchKnowledgeWorkspace,
   listKnowledgeDrafts,
   rejectKnowledgeDraft,
   reviseKnowledgeDraft,
   searchReadingCandidates,
   searchTrustedKnowledge,
+  selectKnowledgeProject,
   uploadKnowledgePdf,
   type KnowledgeDraft,
   type KnowledgeDraftDetail,
@@ -31,6 +34,7 @@ import {
   type KnowledgeAnswer,
   type KnowledgeSearchResult,
   type KnowledgeGraph,
+  type KnowledgeWorkspace,
   type ReadingCandidate,
 } from '@/api/workbench'
 
@@ -39,7 +43,7 @@ const MarkdownRenderer = defineAsyncComponent(async () => (
 ).default)
 
 const message = useMessage()
-const activeTab = ref<'drafts' | 'trusted' | 'qa' | 'candidates'>('drafts')
+const activeTab = ref<'drafts' | 'trusted' | 'qa' | 'candidates' | 'management'>('drafts')
 const fileInput = ref<HTMLInputElement | null>(null)
 const drafts = ref<KnowledgeDraft[]>([])
 const draftsLoading = ref(false)
@@ -76,8 +80,17 @@ const detailOpen = ref(false)
 const detailLoading = ref(false)
 const detailError = ref('')
 const draftDetail = ref<KnowledgeDraftDetail | null>(null)
+const workspace = ref<KnowledgeWorkspace | null>(null)
+const workspaceLoading = ref(false)
+const workspaceError = ref('')
+const selectedProjectId = ref<string | null>(null)
+const switchingProject = ref(false)
 
 const reviewCount = computed(() => drafts.value.filter((draft) => draft.status === 'awaiting_review').length)
+const projectOptions = computed(() => (workspace.value?.projects || []).map((project) => ({
+  label: project.name,
+  value: project.id,
+})))
 
 const statusLabels: Record<KnowledgeDraftStatus, string> = {
   uploaded: '已上传',
@@ -128,6 +141,46 @@ async function loadDrafts() {
     draftsError.value = reason instanceof Error ? reason.message : '草稿列表加载失败'
   } finally {
     draftsLoading.value = false
+  }
+}
+
+async function loadWorkspace() {
+  workspaceLoading.value = true
+  workspaceError.value = ''
+  try {
+    const nextWorkspace = await fetchKnowledgeWorkspace()
+    workspace.value = nextWorkspace
+    selectedProjectId.value = nextWorkspace.currentProject?.id
+      || nextWorkspace.projects.find((project) => project.current)?.id
+      || null
+  } catch (reason) {
+    workspace.value = null
+    workspaceError.value = reason instanceof Error ? reason.message : '知识库服务状态加载失败'
+  } finally {
+    workspaceLoading.value = false
+  }
+}
+
+async function switchKnowledgeProject() {
+  const projectId = selectedProjectId.value
+  if (!projectId || switchingProject.value) return
+  if (workspace.value?.currentProject?.id === projectId) return
+  switchingProject.value = true
+  try {
+    await selectKnowledgeProject(projectId)
+    graph.value = null
+    trustedResults.value = []
+    trustedSearched.value = false
+    answer.value = null
+    candidates.value = []
+    candidatesSearched.value = false
+    await Promise.all([loadWorkspace(), loadDrafts()])
+    message.success('已切换当前知识库')
+  } catch (reason) {
+    message.error(reason instanceof Error ? reason.message : '切换知识库失败')
+    await loadWorkspace()
+  } finally {
+    switchingProject.value = false
   }
 }
 
@@ -320,6 +373,7 @@ async function dismissCandidate(candidate: ReadingCandidate) {
 
 onMounted(() => {
   void loadDrafts()
+  void loadWorkspace()
 })
 </script>
 
@@ -332,6 +386,7 @@ onMounted(() => {
       </div>
       <div class="knowledge-header-actions">
         <NButton size="small" quaternary @click="openGraph">知识图谱</NButton>
+        <NButton size="small" quaternary @click="activeTab = 'management'">知识库管理</NButton>
         <NTag size="small" :type="reviewCount ? 'warning' : 'default'" :bordered="false">
           {{ reviewCount }} 篇待审核
         </NTag>
@@ -502,6 +557,57 @@ onMounted(() => {
           </div>
           <div v-else-if="candidatesSearched && !candidatesError" class="workbench-state"><NEmpty description="没有找到候选论文" /></div>
           <div v-else-if="!candidatesError" class="workbench-state"><NEmpty description="本地证据不足时，再从外部来源查找候选论文" /></div>
+        </NTabPane>
+
+        <NTabPane name="management" tab="知识库管理">
+          <NAlert type="success" :bordered="false" class="workbench-alert">
+            LLM Wiki 作为本机后台知识服务由 Studio 管理，不提供独立窗口、托盘图标或浏览器入口。
+          </NAlert>
+          <NAlert v-if="workspaceError" class="workbench-alert" type="error" title="无法读取知识库服务状态">
+            {{ workspaceError }}
+            <NButton class="alert-retry" size="tiny" @click="loadWorkspace">重试</NButton>
+          </NAlert>
+          <section class="workbench-section" aria-labelledby="knowledge-service-title">
+            <div class="workbench-section-header">
+              <h3 id="knowledge-service-title" class="workbench-section-title">当前知识库</h3>
+              <NButton size="tiny" quaternary :loading="workspaceLoading" @click="loadWorkspace">刷新状态</NButton>
+            </div>
+            <NSpin :show="workspaceLoading">
+              <div v-if="workspace" class="knowledge-management-grid">
+                <div class="knowledge-management-item">
+                  <span>服务状态</span>
+                  <strong>{{ workspace.service.status === 'running' ? '运行中' : workspace.service.status }}</strong>
+                  <small>关键词检索 + 知识图谱</small>
+                </div>
+                <div class="knowledge-management-item">
+                  <span>服务版本</span>
+                  <strong>{{ workspace.service.version || '未知' }}</strong>
+                  <small>{{ workspace.service.retrievalMode || '检索模式未知' }}</small>
+                </div>
+                <div class="knowledge-management-item">
+                  <span>Wiki 问答模型</span>
+                  <strong>{{ workspace.service.llmConfigured ? '已配置' : '未配置' }}</strong>
+                  <small>{{ workspace.service.llmConfigured ? `配置来源：${workspace.service.llmConfigSource}` : '上传、审核、检索和图谱不受影响' }}</small>
+                </div>
+                <div class="knowledge-management-item knowledge-management-item--wide">
+                  <span>当前项目</span>
+                  <strong>{{ workspace.currentProject?.name || '尚未选择' }}</strong>
+                  <code>{{ workspace.currentProject?.path || '未配置项目路径' }}</code>
+                </div>
+              </div>
+              <NEmpty v-else-if="!workspaceError && !workspaceLoading" description="知识库服务暂不可用" />
+            </NSpin>
+          </section>
+          <section v-if="workspace?.projects.length" class="workbench-section" aria-labelledby="knowledge-project-title">
+            <div class="workbench-section-header">
+              <h3 id="knowledge-project-title" class="workbench-section-title">切换项目</h3>
+              <span class="workbench-section-note">仅显示启动配置中的本地知识库</span>
+            </div>
+            <div class="knowledge-project-switcher">
+              <NSelect v-model:value="selectedProjectId" :options="projectOptions" :disabled="switchingProject" />
+              <NButton type="primary" :loading="switchingProject" :disabled="!selectedProjectId || selectedProjectId === workspace.currentProject?.id" @click="switchKnowledgeProject">切换</NButton>
+            </div>
+          </section>
         </NTabPane>
       </NTabs>
     </div>
@@ -861,6 +967,51 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.knowledge-management-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.knowledge-management-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid $border-light;
+  border-radius: $radius-sm;
+  background: $bg-secondary;
+
+  > span,
+  small {
+    color: $text-secondary;
+    font-size: 12px;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 14px;
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    color: $text-muted;
+    font-family: $font-code;
+    font-size: 11px;
+  }
+}
+
+.knowledge-management-item--wide {
+  grid-column: 1 / -1;
+}
+
+.knowledge-project-switcher {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) auto;
+  align-items: center;
+  gap: 10px;
+}
+
 @media (max-width: 720px) {
   .qa-composer {
     grid-template-columns: minmax(0, 1fr);
@@ -886,6 +1037,15 @@ onMounted(() => {
   .draft-version pre {
     min-height: 140px;
     max-height: 300px;
+  }
+
+  .knowledge-management-grid,
+  .knowledge-project-switcher {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .knowledge-project-switcher :deep(.n-button) {
+    justify-self: stretch;
   }
 }
 </style>

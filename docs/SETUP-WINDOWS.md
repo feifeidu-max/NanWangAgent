@@ -7,7 +7,7 @@
 - Hermes Agent `0.18.2`，执行 `hermes --version` 必须返回该版本。
 - LLM Wiki 的 Embedding 设置保持关闭；本项目使用关键词检索与知识图谱，不需要 Ollama 或 embedding 模型。
 - 构建 LLM Wiki 时需要 Rust stable、Tauri 2 所需的 Visual Studio C++ Build Tools 和 WebView2。
-- DeepSeek 等公网模型密钥仅配置在 Hermes/LLM Wiki 的凭据入口，不写入本仓库。
+- DeepSeek 等公网模型密钥仅配置在 Hermes 的凭据入口或 `LLM_WIKI_LLM_*` 用户环境变量中，不写入本仓库。
 
 版本基线记录在 `ops/versions.lock.json`。Studio 和 Wiki 是已修改的 fork，锁定的 commit 表示上游基线，不表示当前工作树必须与上游逐字节相同。
 
@@ -61,7 +61,9 @@ $env:AGNET_LLM_WIKI_API_TOKEN = $token
 Remove-Variable token, bytes
 ```
 
-启动器把该值注入 LLM Wiki 与 Studio 进程环境。Hermes 的 MCP 环境过滤默认不会向子进程传递 Token；`research` Profile 只保存 `${LLM_WIKI_API_TOKEN}` 占位符，由启动器在运行时解析并仅传给 LLM Wiki MCP。任何 `config.yaml`、`.env` 或 `config.local.psd1` 都不得保存真实 Token。LLM Wiki 必须保持：API 开启、匿名访问关闭、LAN 访问关闭。首次使用时创建知识库项目，并保证路径与 `WikiProjectPaths` 一致；当配置中恰好有一个存在的 Wiki 路径时，启动器会自动把它选为当前项目，其他情况仍需在 LLM Wiki 中手动选择。
+启动器把该值注入 LLM Wiki 与 Studio 进程环境。Hermes 的 MCP 环境过滤默认不会向子进程传递 Token；`research` Profile 只保存 `${LLM_WIKI_API_TOKEN}` 占位符，由启动器在运行时解析并仅传给 LLM Wiki MCP。任何 `config.yaml`、`.env` 或 `config.local.psd1` 都不得保存真实 Token。Studio 托管模式强制 API 启用、Token 鉴权、匿名访问关闭和 LAN 访问关闭。首次使用时创建知识库项目目录，并保证路径与 `WikiProjectPaths` 一致；当配置中恰好有一个存在的 Wiki 路径时，启动器会自动把它选为当前项目，多个项目从 Studio 的“个人知识库 / 知识库管理”页切换。
+
+Studio 是唯一用户入口。LLM Wiki 以无用户可见窗口、无托盘图标的后台进程运行，不要单独启动它。上传、审核、关键词检索和知识图谱不需要模型凭据；若要使用 Studio 中的 Wiki 问答，配置获批准的 `LLM_WIKI_LLM_PROVIDER`、`LLM_WIKI_LLM_MODEL`、`LLM_WIKI_LLM_CUSTOM_ENDPOINT` 和 `LLM_WIKI_LLM_API_KEY` 用户环境变量后重新打开 PowerShell。DeepSeek 的 OpenAI 兼容端点可使用 `provider=custom`、`model=deepseek-chat` 和 `custom endpoint=https://api.deepseek.com/v1`。
 
 ## 4. 初始化 research Profile
 
@@ -88,7 +90,7 @@ Profile 不存在时，脚本调用 `hermes profile create research --clone --no
 
 1. 校验 Hermes Agent、Studio 和 Wiki 版本。
 2. 幂等初始化或校验 `research` Profile、只读 MCP 和禁用 Skill。
-3. 确认 LLM Wiki 采用关键词 + 知识图谱检索模式；启动器会自动设置该运行时边界。
+3. 以无用户可见窗口的后台模式启动 LLM Wiki，并确认其采用关键词 + 知识图谱检索模式；启动器会自动设置这些运行时边界。
 4. 检查 LLM Wiki 健康状态及带 Token 的 `/projects` 请求。
 5. 检查 Studio `/health`，并确认启动服务没有监听 LAN 地址。
 6. 打开 `http://127.0.0.1:8648`。
@@ -119,7 +121,7 @@ Windows 系统时区应设为 `China Standard Time`（Asia/Shanghai），否则 
 
 ## 7. 恢复演练
 
-先退出 LLM Wiki 托盘程序并停止 Studio，确认 `8648`、`19828`、`8642` 均无监听。Studio 可用以下命令停止：
+停止 Studio 和由启动器管理的后台 Wiki 服务，确认 `8648`、`19828`、`8642` 均无监听。Wiki 不会显示托盘程序。Studio 可用以下命令停止：
 
 ```powershell
 node .\apps\hermes-studio\bin\hermes-web-ui.mjs stop

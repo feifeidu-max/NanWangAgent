@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Hermes Agent | `0.18.2` | MIT | 独立 Python 运行时 |
 | Hermes Studio | `5be8548` / npm `0.6.30` | BSL-1.1 | Studio Web/BFF 主进程 |
-| LLM Wiki | `v0.6.4` / `03e46fc4` | GPL-3.0-only | 独立桌面/API/MCP 进程 |
+| LLM Wiki | `v0.6.4` / `03e46fc4` | GPL-3.0-only | Studio 托管的独立本机 API/MCP 进程 |
 
 各上游的完整许可证原文分别保留在 `apps/hermes-studio/LICENSE` 与 `apps/llm-wiki/LICENSE`。升级前必须先更新 `ops/versions.lock.json`、阅读许可证变化并跑契约/回归测试。
 
@@ -22,7 +22,7 @@ Hermes Studio 的 BSL-1.1 Additional Use Grant 仅允许非商业用途，包括
 
 ## LLM Wiki
 
-LLM Wiki 按 GPL-3.0-only 保持独立源码目录、独立构建产物和独立进程。Studio 只通过 `127.0.0.1:19828` 的稳定 API/MCP 契约访问它，不复制其 GPL 实现代码到 Studio，也不把两个组件链接成单一二进制。
+LLM Wiki 按 GPL-3.0-only 保持独立源码目录、独立构建产物和独立进程。Studio 只通过 `127.0.0.1:19828` 的稳定 API/MCP 契约访问它，不复制其 GPL 实现代码到 Studio，也不把两个组件链接成单一二进制。该进程由 Studio 启动器以无用户可见窗口、无托盘图标方式运行，使用者只进入 Studio Web 界面。
 
 若向组织外分发修改后的 LLM Wiki 二进制，必须同时按 GPL-3.0 提供对应完整源码、构建说明、许可证和修改声明。进程隔离有助于明确工程边界，但不自动替代具体分发场景的法律判断。
 

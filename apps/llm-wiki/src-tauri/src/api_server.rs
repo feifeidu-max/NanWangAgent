@@ -222,6 +222,11 @@ fn handle_request(
 ) -> ApiResponse {
     let (path, query) = split_url(url);
     if path == "/health" || path == format!("{API_PREFIX}/health") {
+        let runtime_config = load_agent_runtime_config(app);
+        let llm_configured = runtime_config
+            .llm
+            .as_ref()
+            .is_some_and(agent::provider::LlmConfig::is_usable_for_backend_http);
         // /health stays reachable even when the user has disabled the
         // API in Settings — the desktop UI uses it to render the
         // "Enabled / disabled / port_conflict" line, and curl-from-
@@ -235,9 +240,12 @@ fn handle_request(
             "authConfigured": api_token(app).is_some(),
             "tokenSource": api_token_source(app),
             "enabled": api_enabled(app),
+            "studioManaged": crate::studio_managed_headless(),
             "mcpEnabled": api_mcp_enabled(app),
             "allowUnauthenticated": api_allow_unauthenticated(app),
             "allowLanAccess": api_allow_lan_access(app),
+            "llmConfigured": llm_configured,
+            "llmConfigSource": llm_config_source(app),
             "retrievalMode": if commands::search::keyword_only_mode() {
                 "keyword_graph"
             } else {
@@ -280,6 +288,9 @@ fn handle_request(
 
     match (method, parts.as_slice()) {
         (&Method::Get, ["projects"]) => handle_projects(app),
+        (&Method::Post, ["projects", "current", "select"]) => {
+            handle_select_current_project(app, body_text)
+        }
         (&Method::Get, ["projects", project_id, "files"]) => handle_files(app, project_id, query),
         (&Method::Get, ["projects", project_id, "files", "content"]) => {
             handle_file_content(app, project_id, query)
@@ -775,6 +786,9 @@ fn api_auth_required(app: &AppHandle) -> bool {
 }
 
 fn api_allow_unauthenticated(app: &AppHandle) -> bool {
+    if crate::studio_managed_headless() {
+        return false;
+    }
     let Some(parsed) = load_app_state(app) else {
         return false;
     };
@@ -786,6 +800,9 @@ fn api_allow_unauthenticated(app: &AppHandle) -> bool {
 }
 
 fn api_allow_lan_access(app: &AppHandle) -> bool {
+    if crate::studio_managed_headless() {
+        return false;
+    }
     let Some(parsed) = load_app_state(app) else {
         return false;
     };
@@ -804,6 +821,9 @@ fn api_allow_lan_access(app: &AppHandle) -> bool {
 /// "enabled + no token = 401" which is fail-closed by virtue of the
 /// missing token, not the enable flag.
 fn api_enabled(app: &AppHandle) -> bool {
+    if crate::studio_managed_headless() {
+        return true;
+    }
     let Some(parsed) = load_app_state(app) else {
         return true;
     };
@@ -880,6 +900,33 @@ fn handle_projects(app: &AppHandle) -> ApiResponse {
         "projects": projects,
         "currentProject": current_project,
     }))
+}
+
+fn handle_select_current_project(app: &AppHandle, body: &str) -> ApiResponse {
+    let payload: Value = match serde_json::from_str(body) {
+        Ok(payload) => payload,
+        Err(_) => return err(400, "Invalid JSON"),
+    };
+    let project_id = payload
+        .get("projectId")
+        .or_else(|| payload.get("id"))
+        .or_else(|| payload.get("path"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if project_id.is_empty() {
+        return err(400, "projectId is required");
+    }
+
+    let mut project = match resolve_project(app, project_id) {
+        Ok(project) => project,
+        Err(error) => return err(404, &error),
+    };
+    if let Err(error) = clip_server::set_current_project(&project.path) {
+        return err(500, &error);
+    }
+    project.current = true;
+    ok(json!({ "ok": true, "project": project }))
 }
 
 fn load_projects(app: &AppHandle) -> Vec<ProjectEntry> {
@@ -2357,6 +2404,40 @@ fn load_embedding_config(app: &AppHandle) -> Option<commands::search::SearchEmbe
     serde_json::from_value::<commands::search::SearchEmbeddingConfig>(value).ok()
 }
 
+fn clean_environment_value(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn llm_config_from_environment_values<F>(mut get: F) -> Option<agent::provider::LlmConfig>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let provider = clean_environment_value(get("LLM_WIKI_LLM_PROVIDER"))?.to_ascii_lowercase();
+    Some(agent::provider::LlmConfig {
+        provider,
+        api_key: clean_environment_value(get("LLM_WIKI_LLM_API_KEY")).unwrap_or_default(),
+        model: clean_environment_value(get("LLM_WIKI_LLM_MODEL")).unwrap_or_default(),
+        ollama_url: clean_environment_value(get("LLM_WIKI_LLM_OLLAMA_URL")).unwrap_or_default(),
+        custom_endpoint: clean_environment_value(get("LLM_WIKI_LLM_CUSTOM_ENDPOINT"))
+            .unwrap_or_default(),
+        azure_api_version: clean_environment_value(get("LLM_WIKI_LLM_AZURE_API_VERSION")),
+        api_mode: clean_environment_value(get("LLM_WIKI_LLM_API_MODE")),
+        reasoning: None,
+        max_tokens: clean_environment_value(get("LLM_WIKI_LLM_MAX_TOKENS"))
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|value| *value > 0),
+        max_context_size: clean_environment_value(get("LLM_WIKI_LLM_MAX_CONTEXT_SIZE"))
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0),
+    })
+}
+
+fn llm_config_from_environment() -> Option<agent::provider::LlmConfig> {
+    llm_config_from_environment_values(|key| std::env::var(key).ok())
+}
+
 #[derive(Debug, Clone, Default)]
 struct AgentRuntimeConfig {
     embedding: Option<commands::search::SearchEmbeddingConfig>,
@@ -2366,27 +2447,48 @@ struct AgentRuntimeConfig {
 }
 
 fn load_agent_runtime_config(app: &AppHandle) -> AgentRuntimeConfig {
-    let Some(parsed) = load_app_state(app) else {
-        return AgentRuntimeConfig::default();
-    };
+    let parsed = load_app_state(app);
     AgentRuntimeConfig {
         embedding: parsed
-            .get("embeddingConfig")
+            .as_ref()
+            .and_then(|value| value.get("embeddingConfig"))
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok()),
-        llm: parsed
-            .get("llmConfig")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok()),
+        // A Studio-managed headless service cannot depend on an old Wiki
+        // window for first-run setup. Environment configuration takes
+        // precedence so the API key remains outside app-state and Git.
+        llm: llm_config_from_environment().or_else(|| {
+            parsed
+                .as_ref()
+                .and_then(|value| value.get("llmConfig"))
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok())
+        }),
         web_search: parsed
-            .get("searchApiConfig")
+            .as_ref()
+            .and_then(|value| value.get("searchApiConfig"))
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok()),
         anytxt: parsed
-            .get("searchApiConfig")
+            .as_ref()
+            .and_then(|value| value.get("searchApiConfig"))
             .and_then(|value| value.get("anyTxt"))
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok()),
+    }
+}
+
+fn llm_config_source(app: &AppHandle) -> &'static str {
+    if llm_config_from_environment().is_some() {
+        "environment"
+    } else if load_app_state(app)
+        .and_then(|value| value.get("llmConfig").cloned())
+        .and_then(|value| serde_json::from_value::<agent::provider::LlmConfig>(value).ok())
+        .is_some()
+    {
+        "store"
+    } else {
+        "none"
     }
 }
 
@@ -3218,6 +3320,26 @@ mod tests {
             &Method::Get,
             "/api/v1/projects/current/chat"
         ));
+    }
+
+    #[test]
+    fn environment_llm_configuration_supports_headless_custom_providers() {
+        let values = BTreeMap::from([
+            ("LLM_WIKI_LLM_PROVIDER", " custom ".to_string()),
+            ("LLM_WIKI_LLM_API_KEY", "secret".to_string()),
+            ("LLM_WIKI_LLM_MODEL", "deepseek-chat".to_string()),
+            (
+                "LLM_WIKI_LLM_CUSTOM_ENDPOINT",
+                "https://api.deepseek.com/v1".to_string(),
+            ),
+            ("LLM_WIKI_LLM_MAX_TOKENS", "2048".to_string()),
+        ]);
+        let config = llm_config_from_environment_values(|key| values.get(key).cloned()).unwrap();
+
+        assert_eq!(config.provider, "custom");
+        assert_eq!(config.model, "deepseek-chat");
+        assert_eq!(config.max_tokens, Some(2048));
+        assert!(config.is_usable_for_backend_http());
     }
 
     #[test]

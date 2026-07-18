@@ -545,9 +545,28 @@ fn tray_available<R: tauri::Runtime>(window: &tauri::Window<R>) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn studio_managed_headless() -> bool {
+    matches!(
+        std::env::var("LLM_WIKI_HEADLESS")
+            .ok()
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("1" | "true" | "yes")
+    )
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     apply_linux_webkit_compat_env();
+    let studio_managed = studio_managed_headless();
+    let mut context = tauri::generate_context!();
+    if studio_managed {
+        // Studio owns the user-facing experience. Keep the GPL service as a
+        // local API process without creating a second user-facing window or tray entry.
+        context.config_mut().app.windows.clear();
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -562,7 +581,7 @@ pub fn run() {
         // Ark's api/coding/v3, etc.) still work. Requests leave the app
         // from Rust, never the webview.
         .plugin(tauri_plugin_http::init())
-        .setup(|app| {
+        .setup(move |app| {
             // Let the PDF extractor find the bundled pdfium dynamic
             // library via Tauri's platform-correct resource path.
             if let Ok(dir) = app.path().resource_dir() {
@@ -601,19 +620,23 @@ pub fn run() {
             // backend is reachable if tray setup or another integration fails.
             clip_server::start_clip_server(app.handle().clone());
             api_server::start_api_server(app.handle().clone());
-            let tray_available = match tray::create_tray(app.handle()) {
-                Ok(()) => true,
-                Err(err) => {
-                    eprintln!("[tray] system tray unavailable, continuing without it: {err}");
-                    false
-                }
-            };
-            match app.state::<TrayAvailabilityState>().0.lock() {
-                Ok(mut state) => {
-                    *state = tray_available;
-                }
-                Err(err) => {
-                    eprintln!("[tray] failed to update tray availability state: {err}");
+            if studio_managed {
+                eprintln!("[startup] running as a Studio-managed headless knowledge service");
+            } else {
+                let tray_available = match tray::create_tray(app.handle()) {
+                    Ok(()) => true,
+                    Err(err) => {
+                        eprintln!("[tray] system tray unavailable, continuing without it: {err}");
+                        false
+                    }
+                };
+                match app.state::<TrayAvailabilityState>().0.lock() {
+                    Ok(mut state) => {
+                        *state = tray_available;
+                    }
+                    Err(err) => {
+                        eprintln!("[tray] failed to update tray availability state: {err}");
+                    }
                 }
             }
             Ok(())
@@ -746,7 +769,7 @@ pub fn run() {
                 }
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             #[cfg(target_os = "macos")]

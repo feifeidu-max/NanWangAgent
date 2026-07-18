@@ -122,6 +122,26 @@ export interface KnowledgeGraph {
   edges: Array<Record<string, unknown>>
 }
 
+export interface KnowledgeProject {
+  id: string
+  name: string
+  path: string
+  current: boolean
+}
+
+export interface KnowledgeWorkspace {
+  projects: KnowledgeProject[]
+  currentProject: KnowledgeProject | null
+  service: {
+    status: string
+    version: string | null
+    retrievalMode: string | null
+    studioManaged: boolean
+    llmConfigured: boolean
+    llmConfigSource: 'environment' | 'store' | 'none' | string
+  }
+}
+
 export type MetricDirection = 'higher_better' | 'lower_better' | 'neutral'
 
 export interface CompanyMetric {
@@ -270,6 +290,16 @@ function normalizeCandidate(value: unknown): ReadingCandidate {
     provider: asNullableString(item.provider ?? item.source),
     reason: asNullableString(item.reason ?? item.recommendedReason ?? item.recommended_reason),
     status: asString(item.status, 'candidate'),
+  }
+}
+
+function normalizeKnowledgeProject(value: unknown): KnowledgeProject {
+  const item = asRecord(value)
+  return {
+    id: asString(item.id ?? item.path),
+    name: asString(item.name, '未命名知识库'),
+    path: asString(item.path),
+    current: item.current === true,
   }
 }
 
@@ -439,6 +469,35 @@ export async function fetchKnowledgeGraph(): Promise<KnowledgeGraph> {
     nodes: Array.isArray(rawNodes) ? rawNodes.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object') : [],
     edges: Array.isArray(rawEdges) ? rawEdges.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object') : [],
   }
+}
+
+export async function fetchKnowledgeWorkspace(): Promise<KnowledgeWorkspace> {
+  const result = asRecord(await request<unknown>('/api/knowledge/workspace'))
+  const projects = arrayFromResponse(result, 'projects').map(normalizeKnowledgeProject)
+  const currentRaw = asRecord(result.currentProject ?? result.current_project)
+  const currentProject = Object.keys(currentRaw).length
+    ? normalizeKnowledgeProject(currentRaw)
+    : projects.find((project) => project.current) ?? null
+  const service = asRecord(result.service)
+  return {
+    projects,
+    currentProject,
+    service: {
+      status: asString(service.status, 'unknown'),
+      version: asNullableString(service.version),
+      retrievalMode: asNullableString(service.retrievalMode ?? service.retrieval_mode),
+      studioManaged: service.studioManaged !== false,
+      llmConfigured: service.llmConfigured === true,
+      llmConfigSource: asString(service.llmConfigSource ?? service.llm_config_source, 'none'),
+    },
+  }
+}
+
+export async function selectKnowledgeProject(projectId: string): Promise<void> {
+  await request<unknown>('/api/knowledge/workspace/select', {
+    method: 'POST',
+    body: JSON.stringify({ projectId }),
+  })
 }
 
 export async function fetchCompanyMetricsSummary(): Promise<CompanyMetricsSummary> {

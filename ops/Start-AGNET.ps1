@@ -110,7 +110,10 @@ try {
     $env:LLM_WIKI_BASE_URL = "http://127.0.0.1:$wikiPort/api/v1"
     $env:LLM_WIKI_API_BASE_URL = "http://127.0.0.1:$wikiPort"
     $env:LLM_WIKI_MCP_TOOLSET = "research"
-    $env:LLM_WIKI_NATIVE_COMPILE = "1"
+    $env:LLM_WIKI_HEADLESS = "1"
+    # The Studio-managed service has no Wiki WebView worker. Keep compilation
+    # in the backend queue so PDF uploads continue through review headlessly.
+    $env:LLM_WIKI_NATIVE_COMPILE = "0"
     # AGNET deliberately uses LLM Wiki's keyword search plus graph expansion.
     # This prevents stale embedding settings from attempting an embedding call.
     $env:LLM_WIKI_RETRIEVAL_MODE = "keyword_graph"
@@ -130,7 +133,7 @@ try {
         -NodeExecutable $node `
         -Quiet
 
-    Write-Host "[2/3] Starting LLM Wiki on loopback (keyword + graph retrieval)..."
+    Write-Host "[2/3] Starting LLM Wiki as a Studio-managed background service..."
     $wikiHealthUri = "http://127.0.0.1:$wikiPort/api/v1/health"
     $wikiHealth = Get-OptionalHealth -Uri $wikiHealthUri
     if ($null -eq $wikiHealth) {
@@ -152,7 +155,10 @@ try {
         throw "LLM Wiki reports allowLanAccess=true. Disable LAN access before continuing."
     }
     if ($wikiHealth.enabled -ne $true) {
-        throw "LLM Wiki API is disabled. Enable it in LLM Wiki Settings."
+        throw "LLM Wiki API is disabled. Stop the old service, rebuild the release executable, then restart through Start-AGNET.cmd."
+    }
+    if ($wikiHealth.studioManaged -ne $true) {
+        throw "LLM Wiki is not running in Studio-managed headless mode. Rebuild the release executable, then restart through Start-AGNET.cmd."
     }
     if ($wikiHealth.authConfigured -ne $true) {
         throw "LLM Wiki API authentication is not configured."
@@ -161,26 +167,44 @@ try {
         throw "LLM Wiki is not running in keyword_graph mode. Stop the existing LLM Wiki process and restart it through Start-AGNET.cmd."
     }
     $wikiHeaders = @{ Authorization = "Bearer $wikiToken" }
+    $configuredWikiPaths = @(Get-AGNETWikiProjectPaths -Config $config)
+    $registeredWikiProjects = @(
+        foreach ($wikiPath in $configuredWikiPaths) {
+            if (Test-Path -LiteralPath $wikiPath -PathType Container) {
+                [ordered]@{
+                    name = (Split-Path -Leaf $wikiPath)
+                    path = $wikiPath.Replace("\\", "/")
+                }
+            }
+        }
+    )
+    if ($registeredWikiProjects.Count -gt 0) {
+        try {
+            $registrationBody = @{ projects = $registeredWikiProjects } | ConvertTo-Json -Depth 3 -Compress
+            Invoke-RestMethod -Uri "http://127.0.0.1:19827/projects" -Method Post -Body $registrationBody -ContentType "application/json" -TimeoutSec 15 -UseBasicParsing | Out-Null
+        } catch {
+            throw "LLM Wiki project registration failed. Confirm that its loopback Clip service is running."
+        }
+    }
     try {
         $wikiProjectsPayload = Invoke-RestMethod -Uri "http://127.0.0.1:$wikiPort/api/v1/projects" -Method Get -Headers $wikiHeaders -TimeoutSec 10 -UseBasicParsing
     } catch {
         throw "LLM Wiki authenticated API probe failed. Confirm that '$tokenVariable' matches the token used by LLM Wiki."
     }
-    $configuredWikiPaths = @(Get-AGNETWikiProjectPaths -Config $config)
     if ($null -eq $wikiProjectsPayload.currentProject -or [string]::IsNullOrWhiteSpace([string]$wikiProjectsPayload.currentProject.path)) {
         $existingWikiPaths = @($configuredWikiPaths | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
         if ($existingWikiPaths.Count -eq 1) {
-            $selectionBody = @{ path = $existingWikiPaths[0].Replace("\", "/") } | ConvertTo-Json -Compress
+            $selectionBody = @{ projectId = $existingWikiPaths[0].Replace("\", "/") } | ConvertTo-Json -Compress
             try {
-                Invoke-RestMethod -Uri "http://127.0.0.1:19827/project" -Method Post -Body $selectionBody -ContentType "application/json" -TimeoutSec 15 -UseBasicParsing | Out-Null
+                Invoke-RestMethod -Uri "http://127.0.0.1:$wikiPort/api/v1/projects/current/select" -Method Post -Headers $wikiHeaders -Body $selectionBody -ContentType "application/json" -TimeoutSec 15 -UseBasicParsing | Out-Null
                 $wikiProjectsPayload = Invoke-RestMethod -Uri "http://127.0.0.1:$wikiPort/api/v1/projects" -Method Get -Headers $wikiHeaders -TimeoutSec 10 -UseBasicParsing
             } catch {
-                throw "LLM Wiki has no current project and automatic selection of '$($existingWikiPaths[0])' failed. Open LLM Wiki once, select the personal knowledge-base project, then retry."
+                throw "LLM Wiki has no current project and automatic selection of '$($existingWikiPaths[0])' failed. Check WikiProjectPaths, then retry."
             }
         }
     }
     if ($null -eq $wikiProjectsPayload.currentProject -or [string]::IsNullOrWhiteSpace([string]$wikiProjectsPayload.currentProject.path)) {
-        throw "LLM Wiki has no current project. Open LLM Wiki once, create or select the personal knowledge-base project, then retry."
+        throw "LLM Wiki has no current project. Configure an existing WikiProjectPaths entry, then retry."
     }
     $currentWikiPath = [IO.Path]::GetFullPath([string]$wikiProjectsPayload.currentProject.path)
     $currentIsBackedUp = @($configuredWikiPaths | Where-Object { $_.Equals($currentWikiPath, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0

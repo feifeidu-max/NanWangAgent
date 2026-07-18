@@ -34,6 +34,21 @@ function postJson(url: string, body: unknown): Promise<{ status: number, body: a
   })
 }
 
+function getJson(url: string): Promise<{ status: number, body: any }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { method: 'GET' }, (response) => {
+      const chunks: Buffer[] = []
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8')
+        resolve({ status: response.statusCode || 0, body: text ? JSON.parse(text) : null })
+      })
+    })
+    request.on('error', reject)
+    request.end()
+  })
+}
+
 describe('knowledge Wiki chat BFF', () => {
   let server: HttpServer
   let baseUrl: string
@@ -98,5 +113,54 @@ describe('knowledge Wiki chat BFF', () => {
     expect(empty).toEqual({ status: 400, body: { error: 'question_required' } })
     expect(oversized).toEqual({ status: 413, body: { error: 'question_too_long' } })
     expect(upstreamFetch).not.toHaveBeenCalled()
+  })
+
+  it('proxies the Studio-managed workspace and switches by project ID', async () => {
+    upstreamFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/projects')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          projects: [{ id: 'wiki-a', name: '研究资料库', path: 'C:/wiki-a', current: true }],
+          currentProject: { id: 'wiki-a', name: '研究资料库', path: 'C:/wiki-a', current: true },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      }
+      if (url.endsWith('/health')) {
+        return Promise.resolve(new Response(JSON.stringify({ status: 'running', version: '0.6.4', retrievalMode: 'keyword_graph', studioManaged: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }))
+      }
+      if (url.endsWith('/projects/current/select')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, project: { id: 'wiki-a' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }))
+      }
+      return Promise.reject(new Error(`Unexpected upstream request: ${url} ${init?.method || 'GET'}`))
+    })
+
+    const workspace = await getJson(`${baseUrl}/api/knowledge/workspace`)
+    const missing = await postJson(`${baseUrl}/api/knowledge/workspace/select`, {})
+    const selected = await postJson(`${baseUrl}/api/knowledge/workspace/select`, { projectId: 'wiki-a' })
+
+    expect(workspace).toEqual({
+      status: 200,
+      body: expect.objectContaining({
+        projects: [expect.objectContaining({ id: 'wiki-a' })],
+        currentProject: expect.objectContaining({ id: 'wiki-a' }),
+        service: expect.objectContaining({
+          status: 'running',
+          version: '0.6.4',
+          retrievalMode: 'keyword_graph',
+          studioManaged: true,
+          llmConfigured: false,
+          llmConfigSource: 'none',
+        }),
+      }),
+    })
+    expect(missing).toEqual({ status: 400, body: { error: 'project_id_required' } })
+    expect(selected).toEqual({ status: 200, body: { ok: true, project: { id: 'wiki-a' } } })
+    const [url, init] = upstreamFetch.mock.calls.find(([requestUrl]) => String(requestUrl).endsWith('/projects/current/select')) as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:19828/api/v1/projects/current/select')
+    expect(JSON.parse(String(init.body))).toEqual({ projectId: 'wiki-a' })
   })
 })

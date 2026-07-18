@@ -1,14 +1,14 @@
 # AGNET 交付与验收状态
 
-更新时间：2026-07-18 13:16（Asia/Shanghai）
+更新时间：2026-07-18 14:34（Asia/Shanghai）
 
 ## 结论
 
-核心原型代码、Windows 构建产物和本地集成链路已经完成。当前机器上 Hermes Studio、Hermes Agent `0.18.2` Bridge、LLM Wiki `0.6.4` 和正式个人 Wiki 项目已联通；知识库审核门、只读问答、记忆模式、公司模拟指标与确定性报告均可进入实际界面。
+核心原型代码、Windows 构建产物和本地集成链路已经完成。当前机器上 Hermes Studio、Hermes Agent `0.18.2` Bridge、LLM Wiki `0.6.4` 和正式个人 Wiki 项目已联通；知识库审核门、只读问答、记忆模式、公司模拟指标与确定性报告均可进入实际界面。Studio 是唯一用户入口，LLM Wiki 只作为 Studio 托管的本机后台服务运行。
 
 当前状态不是生产验收完成：公网 DeepSeek 端点/凭据未配置，真实公司连接器未提供，50 个研究问题及引用质量指标尚未验收。100 篇本机已有学术 PDF 的摄入、可信发布、关键词检索、知识图谱、页码证据和 Range 下载流程已跑通；受环境网络限制，本次未宣称从互联网下载论文。因此当前可交付范围仍是 Windows 单用户、非商用验证原型。知识库检索已固定为关键词 + 知识图谱，不依赖 Ollama 或 embedding 模型。
 
-本次切换已完成启动器、Rust 检索边界和配置文档的源码改动。2026-07-18 已在本机完成 Tauri release 构建，并用 release EXE 验证 `keyword_graph`、认证、回环监听和托盘运行。启动器会拒绝 `target\debug\llm-wiki.exe`，避免其因缺少 Vite 开发服务器 `localhost:1420` 而显示空白/拒绝连接页面。
+本次切换已完成启动器、Rust 检索边界、Studio 知识库管理页和配置文档的源码改动。2026-07-18 已在本机完成新的 Tauri release 构建，并用 release EXE 验证 `studioManaged=true`、`keyword_graph`、认证、回环监听、无用户可见 WebView 和无托盘创建。启动器会拒绝 `target\debug\llm-wiki.exe`，避免其因缺少 Vite 开发服务器 `localhost:1420` 而显示空白/拒绝连接页面。
 
 ## 固定版本与产物
 
@@ -16,13 +16,13 @@
 | --- | --- | --- |
 | Hermes Agent | `0.18.2` | 已安装到 `.runtime/hermes-0.18.2`，Studio 健康检查实际报告 `v0.18.2` |
 | Hermes Studio | `0.6.30` / upstream `5be8548` | 生产构建通过，运行于 `127.0.0.1:8648` |
-| LLM Wiki | `v0.6.4` / upstream `03e46fc4` | 最新 release EXE 以 `keyword_graph` 运行于 `127.0.0.1:19828`；托盘窗口使用内置前端 |
+| LLM Wiki | `v0.6.4` / upstream `03e46fc4` | 最新 release EXE 以 `keyword_graph` 运行于 `127.0.0.1:19828`；由 Studio 以无用户可见窗口、无托盘图标模式管理 |
 
 产物：
 
 - `apps/llm-wiki/src-tauri/target/release/llm-wiki.exe`
-  - 82,514,432 bytes
-  - SHA-256 `287B27429A675ACD47D2CCB5A3DB900E65CFF24944744DECCF954153B9B5E819`
+  - 82,526,720 bytes
+  - SHA-256 `F42DC1851B442BB816DEF53F75676CE6812D83D39B80F4B8A0216219DCBFD836`
 
 本次采用 `tauri build --no-bundle` 生成已验证的 EXE；仓库中旧 MSI/NSIS 产物不代表本次源码，不得作为当前版本分发。如需安装包，需在目标 Windows 工具链上重新执行 `npm run tauri build` 并再次验证。
 
@@ -33,7 +33,7 @@
 | Studio | `http://127.0.0.1:8648`，状态 `ok` |
 | Agent Bridge | `127.0.0.1:18765`，状态 `ready`，Hermes `v0.18.2` |
 | Studio 数据目录 | `%USERPROFILE%\.hermes-web-ui` |
-| LLM Wiki | `127.0.0.1:19828`，状态 `running`，`retrievalMode=keyword_graph`，运行 `target/release/llm-wiki.exe` |
+| LLM Wiki | `127.0.0.1:19828`，状态 `running`，`studioManaged=true`，`retrievalMode=keyword_graph`，运行 `target/release/llm-wiki.exe` |
 | LLM Wiki 项目 | `C:/Users/13129/Documents/LLM-Wiki`，100 篇论文页面和 100 条可信源记录，已设为 current project |
 | LLM Wiki Token | 已生成到当前 Windows 用户环境变量；未写入仓库、Profile、Wiki、日志或 app-state |
 | research Profile | 已用 Hermes `0.18.2` 初始化；内置 `llm-wiki` Skill 禁用，Bridge 工具集固定为 `llm-wiki` |
@@ -45,7 +45,8 @@
 
 | 业务域 | 状态 | 说明 |
 | --- | --- | --- |
-| 统一工作台与六个一级入口 | 已完成 | 登录默认进入工作台，原 Studio 功能保留在高级功能区 |
+| 统一工作台与六个一级入口 | 已完成 | 登录默认进入工作台；Studio 是唯一用户入口，原 Studio 功能保留在高级功能区 |
+| Studio 托管知识库服务 | 已完成 | LLM Wiki 只保留独立后台进程和回环 API；无独立窗口、托盘图标或浏览器入口，项目在 Studio 知识库管理页切换 |
 | 严格论文摄入 | 已完成代码与验证 | 草稿、单发布锁、批准/重做/拒绝、原子发布、EvidenceLocator 与 PDF Range API 已实现；100 篇本地 PDF 全部达到 `trusted` |
 | Wiki 搜索与问答 | 已完成 | Studio BFF 强制本地、无状态、`readOnly=true`；浏览器不能开启写工具或外网工具 |
 | research Profile/MCP | 已完成 | 只读 `search/read/graph` 工具集；公司域未注册 MCP |
@@ -69,7 +70,9 @@
 - 证据复验：样例页面含 `## Page N` 与 EvidenceLocator，PDF Range 返回 `206`、`bytes 0-15/5464209`，共读取 `16` 字节。
 - 实际浏览器复验：工作台显示 `今日论文 100`、`0 篇待审核`、`可信知识库 100`；知识库页面有 `100` 条“已入库”，图谱弹窗显示 `节点 103`、`关系 100`。
 - 安全复验：Studio/Wiki/Clip/Bridge 仅监听 `127.0.0.1`；关键未授权接口和 Wiki projects 均返回 `401`；恶意 Origin 无 CORS 放行；Token 扫描无匹配。
-- Tauri release 复验：已生成最新 `target/release/llm-wiki.exe`，启动器运行该 EXE 后 `/api/v1/health` 返回 `status=running`、`retrievalMode=keyword_graph`、`authConfigured=true`、`allowLanAccess=false`；`1420` 未监听，托盘窗口不再依赖 Vite 开发服务器。
+- Tauri release 复验：已生成最新 `target/release/llm-wiki.exe`，启动器运行该 EXE 后 `/api/v1/health` 返回 `status=running`、`studioManaged=true`、`enabled=true`、`authConfigured=true`、`allowUnauthenticated=false`、`allowLanAccess=false` 和 `retrievalMode=keyword_graph`；`1420` 未监听，未发现属于 `llm-wiki.exe` 的 WebView 子进程或托盘创建。
+- 无窗口严格摄入复验：在隔离临时项目上传已批准 PDF 后，后台队列进入 `awaiting_review`（11 页、1 项拟变更）；批准后状态为 `trusted`，正式 Wiki 页面、原始 PDF 与可信源记录均存在；随后已恢复原 `LLM-Wiki` 项目。
+- 当前浏览器会话已过期，登录后知识库管理页的本轮人工视觉验收待重新登录执行；生产构建、Studio BFF 契约测试及真实后台服务验证均已通过。
 
 完整 Studio Vitest 不能声明全量通过。未纳入上述 `185/185` 的上游测试在本 Windows 环境仍受 fixture 路径、symlink 权限和机器上真实系统 Skill 污染影响；这些环境失败应与本产品聚焦回归分开处理。
 

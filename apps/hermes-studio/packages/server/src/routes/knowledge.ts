@@ -67,6 +67,47 @@ knowledgeRoutes.get('/api/knowledge/summary', async (ctx: Context) => {
   ctx.body = await knowledgeSummary()
 })
 
+knowledgeRoutes.get('/api/knowledge/workspace', async (ctx: Context) => {
+  try {
+    const [projects, health] = await Promise.all([
+      llmWikiJson<Record<string, unknown>>('/projects'),
+      llmWikiJson<Record<string, unknown>>('/health'),
+    ])
+    ctx.body = {
+      ...projects,
+      service: {
+        status: health.status || 'unknown',
+        version: health.version || null,
+        retrievalMode: health.retrievalMode || health.retrieval_mode || null,
+        studioManaged: health.studioManaged === true,
+        llmConfigured: health.llmConfigured === true,
+        llmConfigSource: health.llmConfigSource || health.llm_config_source || 'none',
+      },
+    }
+  } catch (error) {
+    setProxyError(ctx, error)
+  }
+})
+
+knowledgeRoutes.post('/api/knowledge/workspace/select', async (ctx: Context) => {
+  const body = (ctx.request as any).body || {}
+  const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : ''
+  if (!projectId) {
+    ctx.status = 400
+    ctx.body = { error: 'project_id_required' }
+    return
+  }
+  try {
+    ctx.body = await llmWikiJson('/projects/current/select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId }),
+    })
+  } catch (error) {
+    setProxyError(ctx, error)
+  }
+})
+
 knowledgeRoutes.get('/api/knowledge/drafts', async (ctx: Context) => {
   try { ctx.body = await llmWikiJson('/projects/current/ingest-drafts') } catch (error) { setProxyError(ctx, error) }
 })

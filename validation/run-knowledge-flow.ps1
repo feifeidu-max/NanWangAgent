@@ -92,6 +92,7 @@ if (-not (Test-Path -LiteralPath $project -PathType Container)) {
 
 $env:LLM_WIKI_API_TOKEN = $ApiToken
 $env:LLM_WIKI_RETRIEVAL_MODE = "keyword_graph"
+$env:LLM_WIKI_HEADLESS = "1"
 $env:LLM_WIKI_NATIVE_COMPILE = "0"
 $env:LLM_WIKI_BIND_HOST = "127.0.0.1"
 

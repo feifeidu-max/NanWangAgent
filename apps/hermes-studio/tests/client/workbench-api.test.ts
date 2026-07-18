@@ -14,9 +14,11 @@ vi.mock('@/router', () => ({
 import {
   askTrustedKnowledge,
   fetchKnowledgeDraftDetail,
+  fetchKnowledgeWorkspace,
   listKnowledgeDrafts,
   searchReadingCandidates,
   searchTrustedKnowledge,
+  selectKnowledgeProject,
 } from '../../packages/client/src/api/workbench'
 import { setApiKey } from '../../packages/client/src/api/client'
 
@@ -152,5 +154,31 @@ describe('workbench knowledge API normalization', () => {
       content: 'Legacy response shape.',
       references: [],
     })
+  })
+
+  it('normalizes Studio-managed knowledge projects and selects by ID', async () => {
+    mockFetch
+      .mockResolvedValueOnce(response({
+        projects: [{ id: 'wiki-a', name: '研究资料库', path: 'C:/wiki-a', current: true }],
+        currentProject: { id: 'wiki-a', name: '研究资料库', path: 'C:/wiki-a', current: true },
+        service: { status: 'running', version: '0.6.4', retrievalMode: 'keyword_graph', studioManaged: true },
+      }))
+      .mockResolvedValueOnce(response({ ok: true, project: { id: 'wiki-a' } }))
+
+    const workspace = await fetchKnowledgeWorkspace()
+    await selectKnowledgeProject('wiki-a')
+
+    expect(workspace).toEqual(expect.objectContaining({
+      currentProject: expect.objectContaining({ id: 'wiki-a', path: 'C:/wiki-a' }),
+      service: expect.objectContaining({
+        retrievalMode: 'keyword_graph',
+        studioManaged: true,
+        llmConfigured: false,
+        llmConfigSource: 'none',
+      }),
+    }))
+    expect(mockFetch.mock.calls[0][0]).toBe('/api/knowledge/workspace')
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/knowledge/workspace/select')
+    expect(JSON.parse(String(mockFetch.mock.calls[1][1]?.body))).toEqual({ projectId: 'wiki-a' })
   })
 })

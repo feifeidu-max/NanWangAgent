@@ -37,6 +37,18 @@ pub fn current_project_path() -> String {
         .unwrap_or_default()
 }
 
+pub fn set_current_project(path: &str) -> Result<(), String> {
+    let normalized = path.trim().replace('\\', "/");
+    if normalized.is_empty() {
+        return Err("path field is required".to_string());
+    }
+    let mut guard = CURRENT_PROJECT
+        .lock()
+        .map_err(|err| format!("Lock error: {err}"))?;
+    *guard = normalized;
+    Ok(())
+}
+
 pub fn all_projects() -> Vec<(String, String)> {
     ALL_PROJECTS
         .lock()
@@ -307,18 +319,13 @@ fn handle_set_project(body: &str) -> String {
     };
 
     let path = match parsed["path"].as_str() {
-        // Normalize to forward slashes on ingress so downstream
-        // comparisons against frontend-normalized paths succeed.
-        Some(p) => p.replace('\\', "/"),
+        Some(p) => p,
         None => return r#"{"ok":false,"error":"path field is required"}"#.to_string(),
     };
 
-    match CURRENT_PROJECT.lock() {
-        Ok(mut guard) => {
-            *guard = path;
-            r#"{"ok":true}"#.to_string()
-        }
-        Err(e) => format!(r#"{{"ok":false,"error":"Lock error: {}"}}"#, e),
+    match set_current_project(path) {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
     }
 }
 
