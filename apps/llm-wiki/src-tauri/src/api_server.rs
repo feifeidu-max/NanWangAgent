@@ -3337,6 +3337,18 @@ struct ApiGraphEdge {
     source: String,
     target: String,
     weight: f64,
+    kind: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    shared_terms: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct GraphPage {
+    title: String,
+    node_type: String,
+    path: String,
+    links: Vec<String>,
+    terms: BTreeMap<String, f64>,
 }
 
 fn handle_graph(app: &AppHandle, project_id: &str, query: &str) -> ApiResponse {
@@ -3377,7 +3389,7 @@ fn handle_graph(app: &AppHandle, project_id: &str, query: &str) -> ApiResponse {
 
 fn build_graph(project_path: &str) -> Result<(Vec<ApiGraphNode>, Vec<ApiGraphEdge>), String> {
     let wiki_root = Path::new(project_path).join("wiki");
-    let mut raw: BTreeMap<String, (String, String, String, Vec<String>)> = BTreeMap::new();
+    let mut raw: BTreeMap<String, GraphPage> = BTreeMap::new();
     for entry in WalkDir::new(&wiki_root).into_iter().filter_map(Result::ok) {
         if !entry.file_type().is_file()
             || entry.path().extension().and_then(|s| s.to_str()) != Some("md")
@@ -3388,11 +3400,12 @@ fn build_graph(project_path: &str) -> Result<(Vec<ApiGraphNode>, Vec<ApiGraphEdg
             Ok(content) => content,
             Err(_) => continue,
         };
-        let id = entry
-            .path()
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
+        let path = relative_to_project(project_path, entry.path());
+        let id = path
+            .strip_prefix("wiki/")
+            .unwrap_or(&path)
+            .strip_suffix(".md")
+            .unwrap_or(&path)
             .to_string();
         if id.is_empty() {
             continue;
@@ -3400,16 +3413,29 @@ fn build_graph(project_path: &str) -> Result<(Vec<ApiGraphNode>, Vec<ApiGraphEdg
         let title =
             commands::search::extract_title(&content, entry.file_name().to_string_lossy().as_ref());
         let node_type = extract_type(&content);
-        let path = relative_to_project(project_path, entry.path());
         let links = extract_wikilinks(&content);
-        raw.insert(id, (title, node_type, path, links));
+        let terms = if node_type == "paper" {
+            graph_term_counts(&title, &content)
+        } else {
+            BTreeMap::new()
+        };
+        raw.insert(
+            id,
+            GraphPage {
+                title,
+                node_type,
+                path,
+                links,
+                terms,
+            },
+        );
     }
     let ids: BTreeSet<String> = raw.keys().cloned().collect();
     let mut link_count: BTreeMap<String, usize> = raw.keys().map(|id| (id.clone(), 0)).collect();
     let mut seen = BTreeSet::new();
     let mut edges = Vec::new();
-    for (source, (_, _, _, links)) in &raw {
-        for link in links {
+    for (source, page) in &raw {
+        for link in &page.links {
             let Some(target) = resolve_link(link, &ids) else {
                 continue;
             };
@@ -3428,22 +3454,195 @@ fn build_graph(project_path: &str) -> Result<(Vec<ApiGraphNode>, Vec<ApiGraphEdg
                     source: source.clone(),
                     target,
                     weight: 1.0,
+                    kind: "wikilink".to_string(),
+                    shared_terms: Vec::new(),
                 });
             }
         }
     }
+
+    add_keyword_similarity_edges(&raw, &mut link_count, &mut seen, &mut edges);
+
     let nodes = raw
         .into_iter()
-        .filter(|(_, (_, node_type, _, _))| node_type != "query")
-        .map(|(id, (label, node_type, path, _))| ApiGraphNode {
+        .filter(|(_, page)| page.node_type != "query")
+        .map(|(id, page)| ApiGraphNode {
             link_count: *link_count.get(&id).unwrap_or(&0),
             id,
-            label,
-            node_type,
-            path,
+            label: page.title,
+            node_type: page.node_type,
+            path: page.path,
         })
         .collect();
     Ok((nodes, edges))
+}
+
+fn add_keyword_similarity_edges(
+    pages: &BTreeMap<String, GraphPage>,
+    link_count: &mut BTreeMap<String, usize>,
+    seen: &mut BTreeSet<String>,
+    edges: &mut Vec<ApiGraphEdge>,
+) {
+    let papers = pages
+        .iter()
+        .filter(|(_, page)| page.node_type == "paper" && !page.terms.is_empty())
+        .collect::<Vec<_>>();
+    if papers.len() < 2 {
+        return;
+    }
+
+    let mut document_frequency = BTreeMap::<String, usize>::new();
+    for (_, page) in &papers {
+        for term in page.terms.keys() {
+            *document_frequency.entry(term.clone()).or_default() += 1;
+        }
+    }
+    let document_count = papers.len() as f64;
+    let vectors = papers
+        .iter()
+        .map(|(_, page)| {
+            let mut vector = BTreeMap::new();
+            let mut norm_squared = 0.0;
+            for (term, count) in &page.terms {
+                let frequency = *document_frequency.get(term).unwrap_or(&1) as f64;
+                let idf = ((document_count + 1.0) / (frequency + 1.0)).ln() + 1.0;
+                let weight = (1.0 + count.ln()) * idf;
+                norm_squared += weight * weight;
+                vector.insert(term.clone(), weight);
+            }
+            (vector, norm_squared.sqrt())
+        })
+        .collect::<Vec<_>>();
+
+    let mut candidates = Vec::<(f64, usize, usize, Vec<String>)>::new();
+    for left in 0..papers.len() {
+        for right in (left + 1)..papers.len() {
+            let (left_vector, left_norm) = &vectors[left];
+            let (right_vector, right_norm) = &vectors[right];
+            if *left_norm == 0.0 || *right_norm == 0.0 {
+                continue;
+            }
+            let (small, large) = if left_vector.len() <= right_vector.len() {
+                (left_vector, right_vector)
+            } else {
+                (right_vector, left_vector)
+            };
+            let mut dot = 0.0;
+            let mut shared = Vec::<(f64, String)>::new();
+            for (term, weight) in small {
+                if let Some(other) = large.get(term) {
+                    let contribution = weight * other;
+                    dot += contribution;
+                    shared.push((contribution, term.clone()));
+                }
+            }
+            if dot == 0.0 {
+                continue;
+            }
+            let score = dot / (left_norm * right_norm);
+            if score < 0.035 {
+                continue;
+            }
+            shared.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+            candidates.push((
+                score,
+                left,
+                right,
+                shared.into_iter().take(5).map(|(_, term)| term).collect(),
+            ));
+        }
+    }
+    candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+    let mut similarity_degree = vec![0usize; papers.len()];
+    for (score, left, right, shared_terms) in candidates {
+        if similarity_degree[left] >= 3 || similarity_degree[right] >= 3 {
+            continue;
+        }
+        let source = papers[left].0.clone();
+        let target = papers[right].0.clone();
+        let key = if source < target {
+            format!("{source}::{target}")
+        } else {
+            format!("{target}::{source}")
+        };
+        if !seen.insert(key) {
+            continue;
+        }
+        similarity_degree[left] += 1;
+        similarity_degree[right] += 1;
+        *link_count.entry(source.clone()).or_default() += 1;
+        *link_count.entry(target.clone()).or_default() += 1;
+        edges.push(ApiGraphEdge {
+            source,
+            target,
+            weight: (score * 1000.0).round() / 1000.0,
+            kind: "keyword_similarity".to_string(),
+            shared_terms,
+        });
+    }
+}
+
+fn graph_term_counts(title: &str, content: &str) -> BTreeMap<String, f64> {
+    let mut counts = BTreeMap::<String, f64>::new();
+    for term in graph_terms(title) {
+        *counts.entry(term).or_default() += 6.0;
+    }
+    let body = content.chars().take(120_000).collect::<String>();
+    for term in graph_terms(&body) {
+        let value = counts.entry(term).or_default();
+        *value = (*value + 1.0).min(12.0);
+    }
+    let mut ranked = counts.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    ranked.into_iter().take(80).collect()
+}
+
+fn graph_terms(text: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "about", "after", "also", "among", "based", "been", "being", "between", "both", "could",
+        "does", "each", "from", "have", "into", "more", "most", "other", "over", "paper",
+        "results", "show", "such", "than", "that", "their", "there", "these", "they", "this",
+        "through", "using", "very", "were", "which", "while", "with", "would",
+    ];
+    let stop_words = STOP_WORDS.iter().copied().collect::<BTreeSet<_>>();
+    let mut terms = Vec::new();
+    let mut ascii = String::new();
+    let mut cjk = String::new();
+
+    let flush_ascii = |buffer: &mut String, output: &mut Vec<String>| {
+        if buffer.len() >= 3 && !stop_words.contains(buffer.as_str()) {
+            output.push(buffer.clone());
+        }
+        buffer.clear();
+    };
+    let flush_cjk = |buffer: &mut String, output: &mut Vec<String>| {
+        let chars = buffer.chars().collect::<Vec<_>>();
+        if chars.len() == 1 {
+            output.push(chars[0].to_string());
+        } else {
+            for pair in chars.windows(2) {
+                output.push(pair.iter().collect());
+            }
+        }
+        buffer.clear();
+    };
+
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() {
+            flush_cjk(&mut cjk, &mut terms);
+            ascii.push(character.to_ascii_lowercase());
+        } else if matches!(character as u32, 0x3400..=0x9fff) {
+            flush_ascii(&mut ascii, &mut terms);
+            cjk.push(character);
+        } else {
+            flush_ascii(&mut ascii, &mut terms);
+            flush_cjk(&mut cjk, &mut terms);
+        }
+    }
+    flush_ascii(&mut ascii, &mut terms);
+    flush_cjk(&mut cjk, &mut terms);
+    terms
 }
 
 fn extract_type(content: &str) -> String {
@@ -3478,16 +3677,26 @@ fn extract_wikilinks(content: &str) -> Vec<String> {
 }
 
 fn resolve_link(raw: &str, ids: &BTreeSet<String>) -> Option<String> {
-    let raw = raw.trim().trim_matches('/');
-    if ids.contains(raw) {
-        return Some(raw.to_string());
+    let raw = raw
+        .trim()
+        .trim_matches('/')
+        .strip_prefix("wiki/")
+        .unwrap_or(raw.trim().trim_matches('/'))
+        .strip_suffix(".md")
+        .unwrap_or_else(|| {
+            raw.trim()
+                .trim_matches('/')
+                .strip_prefix("wiki/")
+                .unwrap_or(raw.trim().trim_matches('/'))
+        });
+    if let Some(id) = ids.iter().find(|id| id.eq_ignore_ascii_case(raw)) {
+        return Some(id.clone());
     }
 
     // Wiki links may include a project-relative directory (for example
     // `papers/foo`) and an optional Markdown extension, while graph node IDs
     // are file stems. Resolve the final path component before comparing IDs.
     let path_name = raw.rsplit(['/', '\\']).next().unwrap_or(raw);
-    let path_name = path_name.strip_suffix(".md").unwrap_or(path_name);
     let normalized = path_name.to_lowercase().replace(' ', "-");
     ids.iter()
         .find(|id| id.to_lowercase() == normalized || id.to_lowercase() == path_name.to_lowercase())
@@ -3580,6 +3789,38 @@ mod tests {
         let root_str = root.to_string_lossy();
         let joined = safe_join(&root_str, "wiki/index.md").unwrap();
         assert_eq!(joined, root.join("wiki/index.md"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn graph_adds_keyword_similarity_edges_between_papers() {
+        let root = test_project_dir();
+        let papers = root.join("wiki/papers");
+        fs::create_dir_all(&papers).unwrap();
+        fs::write(
+            papers.join("photonic-a.md"),
+            "---\ntype: paper\ntitle: Photonic matrix accelerator\n---\nPhotonic matrix multiplication accelerator using optical tensor cores.",
+        )
+        .unwrap();
+        fs::write(
+            papers.join("photonic-b.md"),
+            "---\ntype: paper\ntitle: Optical photonic tensor accelerator\n---\nAn optical photonic accelerator performs matrix multiplication with tensor cores.",
+        )
+        .unwrap();
+        fs::write(
+            papers.join("biology.md"),
+            "---\ntype: paper\ntitle: Cellular protein regulation\n---\nA biological study of protein expression and cellular regulation.",
+        )
+        .unwrap();
+
+        let (nodes, edges) = build_graph(root.to_string_lossy().as_ref()).unwrap();
+        assert!(nodes.iter().any(|node| node.id == "papers/photonic-a"));
+        assert!(edges.iter().any(|edge| {
+            edge.kind == "keyword_similarity"
+                && ((edge.source == "papers/photonic-a" && edge.target == "papers/photonic-b")
+                    || (edge.source == "papers/photonic-b" && edge.target == "papers/photonic-a"))
+                && !edge.shared_terms.is_empty()
+        }));
         let _ = fs::remove_dir_all(root);
     }
 

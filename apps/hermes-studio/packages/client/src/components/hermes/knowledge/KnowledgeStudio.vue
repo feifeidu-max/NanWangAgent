@@ -69,6 +69,7 @@ import {
   type KnowledgeSkill,
   type TrustedKnowledgeSource,
 } from '@/api/knowledge-workbench'
+import KnowledgeGraphNetwork from '@/components/hermes/knowledge/KnowledgeGraphNetwork.vue'
 
 const MarkdownRenderer = defineAsyncComponent(async () => (
   await import('@/components/hermes/chat/MarkdownRenderer.vue')
@@ -159,6 +160,7 @@ const graph = ref<KnowledgeGraph>({ nodes: [], edges: [] })
 const graphLoading = ref(false)
 const graphError = ref('')
 const graphFilter = ref('')
+const graphPaperOnly = ref(true)
 
 const drafts = ref<KnowledgeDraft[]>([])
 const draftsLoading = ref(false)
@@ -214,10 +216,30 @@ const dirtyFile = computed(() => activeFileContent.value !== savedFileContent.va
 const wikiTree = computed(() => toTreeNodes(wikiFiles.value))
 const sourceTree = computed(() => toTreeNodes(sourceFiles.value))
 const filteredGraphNodes = computed(() => {
+  const eligible = graphPaperOnly.value
+    ? graph.value.nodes.filter(node => String(node.nodeType ?? node.node_type ?? '').toLowerCase() === 'paper')
+    : graph.value.nodes
   const query = graphFilter.value.trim().toLowerCase()
-  if (!query) return graph.value.nodes
-  return graph.value.nodes.filter((node) => graphLabel(node).toLowerCase().includes(query))
+  if (!query) return eligible
+  const eligibleIds = new Set(eligible.map(graphId))
+  const matchedIds = new Set(
+    eligible
+      .filter(node => graphLabel(node).toLowerCase().includes(query))
+      .map(graphId),
+  )
+  for (const edge of graph.value.edges) {
+    const source = String(edge.source ?? '')
+    const target = String(edge.target ?? '')
+    if (matchedIds.has(source) && eligibleIds.has(target)) matchedIds.add(target)
+    if (matchedIds.has(target) && eligibleIds.has(source)) matchedIds.add(source)
+  }
+  return eligible.filter(node => matchedIds.has(graphId(node)))
 })
+const filteredGraphEdges = computed(() => {
+  const ids = new Set(filteredGraphNodes.value.map(graphId))
+  return graph.value.edges.filter(edge => ids.has(String(edge.source ?? '')) && ids.has(String(edge.target ?? '')))
+})
+const graphSimilarityCount = computed(() => filteredGraphEdges.value.filter(edge => edge.kind === 'keyword_similarity').length)
 const selectedWikiFileName = computed(() => selectedWikiPath.value.split('/').pop() || 'Wiki 页面')
 
 function setActiveView(value: WorkbenchView) {
@@ -256,6 +278,11 @@ function findFileNode(nodes: KnowledgeFileNode[], path: string): KnowledgeFileNo
 function graphLabel(node: Record<string, unknown>): string {
   const value = node.label ?? node.title ?? node.name ?? node.id
   return typeof value === 'string' ? value : '未命名节点'
+}
+
+function graphId(node: Record<string, unknown>): string {
+  const value = node.id ?? node.path
+  return typeof value === 'string' ? value : ''
 }
 
 function graphPath(node: Record<string, unknown>): string {
@@ -999,11 +1026,10 @@ onMounted(async () => {
         </section>
 
         <section v-else-if="activeView === 'graph'" class="knowledge-view">
-          <div class="section-heading"><div><h3>知识图谱</h3><p>显示正式 Wiki 页之间的关联，暂存草稿不参与图谱。</p></div><NButton size="small" :loading="graphLoading" @click="loadGraph">刷新图谱</NButton></div>
+          <div class="section-heading"><div><h3>知识图谱</h3><p>实线表示 Wiki 显式链接，虚线表示已批准论文之间的关键词相关性；草稿不参与图谱。</p></div><NButton size="small" :loading="graphLoading" @click="loadGraph">刷新图谱</NButton></div>
           <NAlert v-if="graphError" type="error" class="knowledge-studio__alert">{{ graphError }}</NAlert>
-          <div class="query-row"><NInput v-model:value="graphFilter" placeholder="筛选节点" /><NTag :bordered="false">{{ graph.nodes.length }} 节点 · {{ graph.edges.length }} 关系</NTag></div>
-          <NSpin :show="graphLoading"><div v-if="filteredGraphNodes.length" class="graph-board"><button v-for="node in filteredGraphNodes" :key="String(node.id)" type="button" class="graph-node" @click="openGraphNode(node)"><strong>{{ graphLabel(node) }}</strong><span>{{ typeof node.nodeType === 'string' ? node.nodeType : 'page' }}</span></button></div><NEmpty v-else description="暂无知识图谱节点" /></NSpin>
-          <div v-if="graph.edges.length" class="edge-list"><span v-for="(edge, index) in graph.edges.slice(0, 120)" :key="index">{{ String(edge.source) }} ↔ {{ String(edge.target) }}</span></div>
+          <div class="graph-toolbar"><NInput v-model:value="graphFilter" placeholder="输入论文标题，保留匹配节点及其一跳邻居" /><NCheckbox v-model:checked="graphPaperOnly">仅看论文</NCheckbox><NTag :bordered="false">{{ filteredGraphNodes.length }} 节点 · {{ filteredGraphEdges.length }} 关系</NTag><NTag v-if="graphSimilarityCount" type="warning" :bordered="false">{{ graphSimilarityCount }} 条关键词关系</NTag></div>
+          <NSpin :show="graphLoading"><KnowledgeGraphNetwork v-if="filteredGraphNodes.length" :nodes="filteredGraphNodes" :edges="filteredGraphEdges" @open="openGraphNode" /><NEmpty v-else description="暂无知识图谱节点" /></NSpin>
         </section>
 
         <section v-else-if="activeView === 'review'" class="knowledge-view">
@@ -1334,12 +1360,8 @@ onMounted(async () => {
 .result-row > a,
 .candidate-actions > a { color: $accent-primary; font-size: 12px; text-decoration: none; }
 
-.graph-board { display: flex; min-height: 290px; align-content: flex-start; flex-wrap: wrap; gap: 9px; border: 1px solid $border-light; padding: 18px; background: $bg-secondary; }
-.graph-node { display: grid; min-width: min(180px, 100%); max-width: 250px; gap: 4px; border: 1px solid $border-color; border-radius: $radius-sm; padding: 10px; background: $bg-primary; color: $text-primary; cursor: pointer; text-align: left; }
-.graph-node:hover { border-color: $accent-primary; }
-.graph-node span { color: $text-secondary; font-size: 11px; }
-.edge-list { display: flex; flex-wrap: wrap; gap: 7px; color: $text-secondary; font-family: $font-code; font-size: 11px; }
-.edge-list span { max-width: 100%; overflow: hidden; padding: 4px 7px; border: 1px solid $border-light; text-overflow: ellipsis; white-space: nowrap; }
+.graph-toolbar { display: flex; align-items: center; gap: 10px; }
+.graph-toolbar :deep(.n-input) { flex: 1; min-width: 220px; }
 
 .subsection-heading { padding-top: 5px; border-bottom: 1px solid $border-light; padding-bottom: 8px; }
 .subsection-heading h4 { margin: 0; font-size: 14px; }
@@ -1432,7 +1454,8 @@ onMounted(async () => {
   .link-group { padding: 10px 0; border-bottom: 1px solid $border-light; }
   .query-row,
   .research-composer,
-  .stage-generated { align-items: stretch; flex-direction: column; }
+  .stage-generated,
+  .graph-toolbar { align-items: stretch; flex-direction: column; }
   .query-row :deep(.n-button),
   .research-composer :deep(.n-button),
   .stage-generated :deep(.n-button) { width: 100%; }
