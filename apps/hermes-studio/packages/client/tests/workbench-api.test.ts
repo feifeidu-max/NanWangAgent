@@ -9,7 +9,6 @@ vi.mock('../src/api/client', () => ({
 }))
 
 import {
-  listCompanyReports,
   listKnowledgeDrafts,
   reviseKnowledgeDraft,
   searchReadingCandidates,
@@ -86,27 +85,6 @@ describe('workbench API contract', () => {
     expect(candidates[0]).toEqual(expect.objectContaining({
       id: '10.1/example',
       provider: 'Crossref',
-    }))
-  })
-
-  it('normalizes report history response fields', async () => {
-    requestMock.mockResolvedValue({
-      reports: [{
-        id: '2026-07-16',
-        report_date: '2026-07-16',
-        generated_at: '2026-07-16T01:00:00Z',
-        status: 'success',
-        metric_count: 5,
-        abnormal_count: 1,
-      }],
-    })
-
-    const reports = await listCompanyReports()
-
-    expect(reports[0]).toEqual(expect.objectContaining({
-      reportDate: '2026-07-16',
-      metricCount: 5,
-      abnormalCount: 1,
     }))
   })
 })

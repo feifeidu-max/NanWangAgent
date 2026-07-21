@@ -63,7 +63,7 @@ onMounted(() => {
     <header class="page-header">
       <div class="workbench-page-heading">
         <h2 class="header-title">个人工作台</h2>
-        <p>论文知识、公司指标与定时报告的本地概览</p>
+        <p>论文知识与记忆的本地概览</p>
       </div>
       <NButton size="small" quaternary :loading="loading" aria-label="刷新工作台" @click="loadSummary">
         <template #icon>
@@ -102,18 +102,6 @@ onMounted(() => {
               <span class="summary-label">可信知识库</span>
               <strong class="summary-value">{{ summary.knowledge.trusted }}</strong>
               <span class="summary-meta">{{ summary.knowledge.candidates }} 篇待读候选</span>
-            </RouterLink>
-            <RouterLink class="summary-tile" :to="{ name: 'hermes.companyMetrics' }">
-              <span class="summary-label">公司指标</span>
-              <strong class="summary-value">{{ summary.company.metricCount }}</strong>
-              <span class="summary-meta status-dot-label" :class="summary.company.status">
-                {{ statusLabel(summary.company.status) }} · {{ formatDateTime(summary.company.lastUpdated) }}
-              </span>
-            </RouterLink>
-            <RouterLink class="summary-tile" :to="{ name: 'hermes.reports' }">
-              <span class="summary-label">下一次报告</span>
-              <strong class="summary-value summary-value--date">{{ formatDateTime(summary.reports.nextRun, '待调度') }}</strong>
-              <span class="summary-meta">上次：{{ statusLabel(summary.reports.lastStatus) }}</span>
             </RouterLink>
           </div>
         </section>

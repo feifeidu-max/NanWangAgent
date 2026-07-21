@@ -4,9 +4,9 @@
 
 ## 结论
 
-核心原型代码、Windows 构建产物和本地集成链路已经完成。当前机器上 Hermes Studio、Hermes Agent `0.18.2` Bridge、LLM Wiki `0.6.4` 和正式个人 Wiki 项目已联通；知识库审核门、只读问答、记忆模式、公司模拟指标与确定性报告均可进入实际界面。Studio 是唯一用户入口，LLM Wiki 只作为 Studio 托管的本机后台服务运行。
+核心原型代码、Windows 构建产物和本地集成链路已经完成。当前机器上 Hermes Studio、Hermes Agent `0.18.2` Bridge、LLM Wiki `0.6.4` 和正式个人 Wiki 项目已联通；知识库审核门、只读问答和记忆模式均可进入实际界面。Studio 是唯一用户入口，LLM Wiki 只作为 Studio 托管的本机后台服务运行。
 
-当前状态不是生产验收完成：公网 DeepSeek 端点/凭据未配置，真实公司连接器未提供，50 个研究问题及引用质量指标尚未验收。100 篇本机已有学术 PDF 的摄入、可信发布、关键词检索、知识图谱、页码证据和 Range 下载流程已跑通；受环境网络限制，本次未宣称从互联网下载论文。因此当前可交付范围仍是 Windows 单用户、非商用验证原型。知识库检索已固定为关键词 + 知识图谱，不依赖 Ollama 或 embedding 模型。
+当前状态不是生产验收完成：公网 DeepSeek 端点/凭据未配置，50 个研究问题及引用质量指标尚未验收。100 篇本机已有学术 PDF 的摄入、可信发布、关键词检索、知识图谱、页码证据和 Range 下载流程已跑通；受环境网络限制，本次未宣称从互联网下载论文。因此当前可交付范围仍是 Windows 单用户、非商用验证原型。知识库检索已固定为关键词 + 知识图谱，不依赖 Ollama 或 embedding 模型。
 
 本次切换已完成启动器、Rust 检索边界、Studio 知识库管理页和配置文档的源码改动。2026-07-18 已在本机完成新的 Tauri release 构建，并用 release EXE 验证 `studioManaged=true`、`keyword_graph`、认证、回环监听、无用户可见 WebView 和无托盘创建。启动器会拒绝 `target\debug\llm-wiki.exe`，避免其因缺少 Vite 开发服务器 `localhost:1420` 而显示空白/拒绝连接页面。
 
@@ -37,7 +37,6 @@
 | LLM Wiki 项目 | `C:/Users/13129/Documents/LLM-Wiki`，100 篇论文页面和 100 条可信源记录，已设为 current project |
 | LLM Wiki Token | 已生成到当前 Windows 用户环境变量；未写入仓库、Profile、Wiki、日志或 app-state |
 | research Profile | 已用 Hermes `0.18.2` 初始化；内置 `llm-wiki` Skill 禁用，Bridge 工具集固定为 `llm-wiki` |
-| 公司数据 | `MockConnector`，5 个模拟指标；不代表真实公司经营数据 |
 
 仓库根部三个 upstream remote 均为 fetch-only，push URL 为 `DISABLED`。根仓库已建立并推送 `main` 基线；上游同步仍应在独立分支完成，不能以最新版直接覆盖固定基线。
 
@@ -49,10 +48,9 @@
 | Studio 托管知识库服务 | 已完成 | LLM Wiki 只保留独立后台进程和回环 API；无独立窗口、托盘图标或浏览器入口，项目在 Studio 知识库管理页切换 |
 | 严格论文摄入 | 已完成代码与验证 | 草稿、单发布锁、批准/重做/拒绝、原子发布、EvidenceLocator 与 PDF Range API 已实现；100 篇本地 PDF 全部达到 `trusted` |
 | Wiki 搜索与问答 | 已完成 | Studio BFF 强制本地、无状态、`readOnly=true`；浏览器不能开启写工具或外网工具 |
-| research Profile/MCP | 已完成 | 只读 `search/read/graph` 工具集；公司域未注册 MCP |
+| research Profile/MCP | 已完成 | 只读 `search/read/graph` 工具集 |
 | 记忆模式 | 已完成 | 新空白会话可在 `on/clean` 间选择；首条消息后锁定；`clean` 排除 MEMORY/USER 与记忆工具并保留 SOUL |
 | 记忆文档管理 | 已完成 | revision/If-Match、原子写、历史恢复、敏感内容扫描与真实路径展示 |
-| 公司指标与报告 | 模拟原型完成 | 独立 SQLite、确定性阈值、工作日 09:00、幂等补跑与失败记录；真实连接器待 API 文档 |
 | 启动、备份与恢复 | 脚本完成 | launcher、计划任务、30 份保留、密钥排除和恢复 smoke 已通过；一键启动不再检查或启动 Ollama |
 
 ## 验证结果
@@ -81,7 +79,6 @@
 - 用 50 个研究问题验收 Top 5、事实结论引用覆盖率、引用页码匹配率和检索延迟；本次已完成 100 篇流程级验证，但未完成问题集质量验收。
 - 在目标 Windows 工具链上重新生成 MSI/NSIS 安装包，并用安装包做一次独立验证；当前已验证的是 release EXE。
 - 配置公司批准的公网 DeepSeek 端点与凭据；当前 UI 中的本地模型不是计划中的 DeepSeek 配置。
-- 提供公司平台 API 文档、鉴权、指标口径和阈值，替换 `MockConnector` 后再做真实数据验收。
 - 在真实数据规模上完成一次全量备份恢复并测量 RPO/RTO；现有结果为自动化 smoke，不等同于生产演练。
 - 正式公司使用前完成 Hermes Studio BSL-1.1 商业授权/法务意见、GPL-3.0 分发义务确认和安全审计。
 

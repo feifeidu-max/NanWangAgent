@@ -15,7 +15,6 @@
     # %LOCALAPPDATA%\hermes, %APPDATA%\hermes, then %USERPROFILE%\.hermes.
     HermesHome           = ""
     StudioDataHome       = "%USERPROFILE%\.hermes-web-ui"
-    CompanyMetricsDbPath = ""
 
     # Add every LLM Wiki project that must be backed up. Paths may contain
     # Windows environment variables. Missing paths are reported and skipped.

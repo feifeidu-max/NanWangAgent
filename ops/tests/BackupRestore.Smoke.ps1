@@ -59,7 +59,6 @@ try {
     New-TestDatabase -Path (Join-Path $hermes "state.db") -TableName "sessions"
     New-TestDatabase -Path (Join-Path $hermes "profiles\research\state.db") -TableName "sessions"
     New-TestDatabase -Path (Join-Path $studio "hermes-web-ui.db") -TableName "sessions"
-    New-TestDatabase -Path (Join-Path $studio "company-metrics.sqlite") -TableName "metrics"
 
     New-Item -ItemType Directory -Path (Join-Path $hermes "memories") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $hermes "skills\fixture") -Force | Out-Null

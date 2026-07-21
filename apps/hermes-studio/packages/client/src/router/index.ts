@@ -32,16 +32,6 @@ const router = createRouter({
       component: () => import('@/views/hermes/KnowledgeView.vue'),
     },
     {
-      path: '/hermes/company-metrics',
-      name: 'hermes.companyMetrics',
-      component: () => import('@/views/hermes/CompanyMetricsView.vue'),
-    },
-    {
-      path: '/hermes/reports',
-      name: 'hermes.reports',
-      component: () => import('@/views/hermes/ReportsView.vue'),
-    },
-    {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
       component: () => import('@/views/hermes/ChatView.vue'),

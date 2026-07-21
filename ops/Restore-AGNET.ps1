@@ -69,9 +69,8 @@ try {
 
     $hermesHome = Get-AGNETHermesHome -Config $config
     $studioHome = Get-AGNETStudioDataHome -Config $config
-    $metricsDb = Get-AGNETMetricsDbPath -Config $config
     $managedWikiProjectsRoot = Get-AGNETManagedWikiProjectsRoot -Config $config
-    $allowedRoots = @($hermesHome, $studioHome, (Split-Path -Parent $metricsDb), $managedWikiProjectsRoot) + @(Get-AGNETWikiProjectPaths -Config $config)
+    $allowedRoots = @($hermesHome, $studioHome, $managedWikiProjectsRoot) + @(Get-AGNETWikiProjectPaths -Config $config)
 
     $seenDestinations = @{}
     foreach ($mapping in @($manifest.restoreMap)) {

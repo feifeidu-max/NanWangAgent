@@ -4,8 +4,6 @@ import { stopPreviewRuntime } from '../controllers/update'
 import { codingAgentRunManager } from './agent-runner/coding-agent-run-manager'
 import { shutdownManagedGateways } from './hermes/gateway-runner'
 import { stopOutboundRelayClient } from './global-agent/outbound-relay-client'
-import { stopCompanyMetricsScheduler } from './company-metrics/scheduler'
-import { closeCompanyMetricsService } from './company-metrics/service'
 
 const DEFAULT_SHUTDOWN_FORCE_EXIT_MS = 15_000
 const DEFAULT_DESKTOP_SHUTDOWN_FORCE_EXIT_MS = 15_000
@@ -98,10 +96,6 @@ export function createShutdownHandler(server: any, groupChatServer?: any, chatRu
 
       codingAgentRunManager.shutdown()
       logger.info('Coding agent hidden sessions closed')
-
-      stopCompanyMetricsScheduler()
-      closeCompanyMetricsService()
-      logger.info('Company metrics scheduler and database closed')
 
       // Disconnect Socket.IO before HTTP server to prevent hanging
       if (groupChatServer) {

@@ -124,7 +124,6 @@ try {
 
     $hermesHome = Get-AGNETHermesHome -Config $config
     $studioHome = Get-AGNETStudioDataHome -Config $config
-    $metricsDb = Get-AGNETMetricsDbPath -Config $config
     $wikiProjects = @(Get-AGNETWikiProjectPaths -Config $config)
 
     $sourceRoots = @($hermesHome, $studioHome) + $wikiProjects
@@ -169,13 +168,6 @@ try {
         Add-SqliteSnapshot -Source $studioDb -BackupRelativePath "studio/hermes-web-ui.db" -Component "hermes-studio" -Destination $studioDb
     } else {
         Add-BackupWarning "Hermes Studio database does not exist yet: $studioDb"
-    }
-
-    Write-Host "Backing up company metrics..."
-    if (Test-Path -LiteralPath $metricsDb -PathType Leaf) {
-        Add-SqliteSnapshot -Source $metricsDb -BackupRelativePath "company/company-metrics.sqlite" -Component "company-metrics" -Destination $metricsDb
-    } else {
-        Add-BackupWarning "Company metrics database does not exist yet: $metricsDb"
     }
 
     Write-Host "Backing up LLM Wiki projects..."

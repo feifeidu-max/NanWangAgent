@@ -100,7 +100,7 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 844 }
     await page.locator('.hamburger-btn').click()
     const sidebar = page.locator('aside.sidebar')
     await expect(sidebar).toHaveCSS('width', '240px')
-    for (const label of ['个人工作台', 'Hermes 对话', 'LLM Wiki', '公司数据', '定时报告', '记忆管理']) {
+    for (const label of ['个人工作台', 'Hermes 对话', 'LLM Wiki', '记忆管理']) {
       await expect(sidebar.locator('.primary-nav-item span', { hasText: label })).toBeVisible()
     }
 

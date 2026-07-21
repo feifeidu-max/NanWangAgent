@@ -48,7 +48,6 @@ import { runtimeVersionRoutes } from './hermes/runtime-versions'
 import { writeGateRoutes } from './hermes/write-gate'
 import { petdexPublicRoutes, petdexRoutes } from './hermes/petdex'
 import { petRoutes } from './hermes/pets'
-import { companyMetricsRoutes } from './company-metrics'
 import { knowledgeRoutes } from './knowledge'
 import { workbenchRoutes } from './workbench'
 import { sensenovaRoutes } from './hermes/sensenova'
@@ -114,7 +113,6 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(writeGateRoutes.routes())              // Hermes Agent write approval review
   app.use(petdexRoutes.routes())
   app.use(petRoutes.routes())
-  app.use(companyMetricsRoutes.routes())
   app.use(knowledgeRoutes.routes())
   app.use(workbenchRoutes.routes())
   app.use(sensenovaRoutes.routes())

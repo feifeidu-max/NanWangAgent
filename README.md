@@ -1,8 +1,8 @@
 # NanWangAgent / AGNET 本地智能工作台
 
-AGNET 是面向个人研究与日常工作的 Windows 本地智能工作台。它不重新实现 Agent 核心，而是在固定版本的 Hermes Studio、Hermes Agent 和 LLM Wiki 上增加了论文知识库、记忆管理、公司指标和定时报告能力。
+AGNET 是面向个人研究与日常工作的 Windows 本地智能工作台。它不重新实现 Agent 核心，而是在固定版本的 Hermes Studio、Hermes Agent 和 LLM Wiki 上增加了论文知识库和记忆管理能力。
 
-本仓库交付的是 **Windows 单用户、仅限 `localhost`、非商用验证原型**。完成本 README 的首次安装后，使用者可以在本机打开 `http://127.0.0.1:8648`，上传论文、审核知识、使用 Hermes 对话、管理记忆，并查看模拟公司指标和报告。
+本仓库交付的是 **Windows 单用户、仅限 `localhost`、非商用验证原型**。完成本 README 的首次安装后，使用者可以在本机打开 `http://127.0.0.1:8648`，上传论文、审核知识、使用 Hermes 对话、管理记忆。
 
 **Studio 是唯一面向使用者的入口。** 左侧一级导航中的 **LLM Wiki** 是论文知识库的唯一管理入口。LLM Wiki 仍保持独立本机进程以隔离许可证和数据边界，但只作为 Studio 管理的后台知识服务运行，不创建用户可见窗口、托盘图标或独立浏览器入口。
 
@@ -23,14 +23,11 @@ flowchart LR
     H --> M["已配置的公网模型\n例如 DeepSeek"]
     S --> W["Studio 托管的 LLM Wiki 后台服务\n关键词检索 + 知识图谱"]
     W --> P["本地 PDF、审核草稿与正式 Wiki"]
-    S --> C["公司指标 SQLite"]
-    C --> R["确定性模板报告"]
 ```
 
 三类数据有明确边界：
 
 - 论文知识只在 LLM Wiki 的审核流程中进入正式知识库；Hermes 的 `research` Profile 只能读取批准后的知识。
-- 公司指标使用独立 SQLite、独立路由和确定性规则，不注册为 MCP，不会进入 Hermes、DeepSeek 或其他 LLM 上下文。
 - 记忆由当前 Hermes Profile 管理；新会话可选择是否向配置的公网模型发送长期记忆。
 
 ## 功能清单
@@ -39,11 +36,9 @@ flowchart LR
 
 | 入口 | 用法 | 当前交付范围 |
 | --- | --- | --- |
-| 个人工作台 | 查看今日论文、待审核数、可信知识库规模、公司数据新鲜度、下一次报告和服务健康状态 | 已完成 |
+| 个人工作台 | 查看今日论文、待审核数、可信知识库规模和服务健康状态 | 已完成 |
 | Hermes 对话 | 创建会话、选择 Profile 和记忆模式，使用已配置的模型进行对话 | 已完成；模型密钥需由使用者自行配置 |
 | LLM Wiki | 在 Studio 内完成项目创建/切换、论文审核、Wiki 树与编辑、文件历史、页面链接、来源库、检索、知识图谱、审核、对话、深度研究、Skills、检查和设置 | 已完成；检索为关键词 + 图谱，不含向量检索 |
-| 公司数据 | 手动刷新本地快照、查看指标、阈值和新鲜度 | `MockConnector` 模拟数据，不是生产经营数据 |
-| 定时报告 | 查看工作日指标日报及成功/失败记录 | 已完成；周一至周五 09:00，时区为 Asia/Shanghai |
 | 记忆管理 | 管理当前 Profile 的 `MEMORY.md`、`USER.md`、`SOUL.md`，查看生效状态、版本和恢复入口 | 已完成 |
 | 全部功能 / 高级工具 | 原 Hermes Studio 的 History、Workflow、Jobs、Skills、MCP、Files、Coding Agents、Logs、Models 等 | 原有路由和 API 保留 |
 
@@ -75,15 +70,6 @@ uploaded -> parsing -> drafting -> awaiting_review -> publishing -> trusted
 | 关闭长期记忆（`clean`） | 使用 `skip_memory=True`；不读取或发送 `MEMORY.md`、`USER.md`，不加载 memory 工具、外部 Memory Provider 或 `session_search`。 | 临时、敏感或不希望使用长期偏好的会话 |
 
 `SOUL.md`、用户选择的 Skills 和当前工作区上下文会在两种模式下保留。请只把非敏感偏好和稳定事实写入 `MEMORY.md` / `USER.md`，不要写入密码、密钥、身份证号、客户数据或公司经营数据。
-
-### 公司数据
-
-- 指标数据库为独立的 `company-metrics.sqlite`，不属于 Hermes Profile，也不会发送给 LLM。
-- 首期提供 `MockConnector` 和 3-5 个可配置模拟指标，支持当前值、单位、方向、口径版本、阈值、源数据时间、请求 ID 和刷新时间。
-- 异常完全由上下限、环比阈值和连续异常规则判定；报告由确定性模板生成，不调用 LLM。
-- Windows 登录并注册任务后，工作日 09:00 会采集并生成报告。09:00 后首次启动时，当天没有报告则只补跑一次；同一 `reportDate` 不会重复生成。
-- 接入真实平台前，必须提供 API 文档、鉴权方式、指标口径和阈值，并完成权限、脱敏和审计评审。
-- 当前版本没有 CSV/Excel 上传入口；真实公司数据必须通过经过验收的 `MetricsConnector` 接入，不能直接修改 SQLite。完整操作、数据库路径、定时规则和真实平台接入步骤见 [公司数据导入与运行手册](docs/COMPANY-DATA.md)。
 
 ## 安装前准备
 
@@ -191,7 +177,7 @@ notepad .\ops\config.local.psd1
 }
 ```
 
-保留模板中其他配置项不变即可。`HermesHome` 留空时，Studio 按 Windows 默认位置自动发现；`CompanyMetricsDbPath` 留空时，使用 Studio 数据目录中的独立 `company-metrics.sqlite`。
+保留模板中其他配置项不变即可。`HermesHome` 留空时，Studio 按 Windows 默认位置自动发现。
 
 ### 5. 创建 LLM Wiki API Token
 
@@ -259,7 +245,7 @@ http://127.0.0.1:8648
 
 ### 8. 配置 Hermes 对话模型
 
-本仓库不会附带 DeepSeek 或任何公网模型的 Key。登录后从“全部功能 / 高级工具”进入 Models/Providers，按照组织批准的模型端点配置 Hermes 对话模型和凭据。Wiki 问答使用上一节的 `LLM_WIKI_LLM_*` 环境变量；本地工作台、论文审核、关键词检索、图谱和公司模拟指标不依赖公网模型。
+本仓库不会附带 DeepSeek 或任何公网模型的 Key。登录后从“全部功能 / 高级工具”进入 Models/Providers，按照组织批准的模型端点配置 Hermes 对话模型和凭据。Wiki 问答使用上一节的 `LLM_WIKI_LLM_*` 环境变量；本地工作台、论文审核、关键词检索和图谱不依赖公网模型。
 
 ## 每日使用指南
 
@@ -272,7 +258,7 @@ http://127.0.0.1:8648
 1. 在项目根目录双击 `Start-AGNET.cmd`。保持弹出的启动窗口开启，等待浏览器打开 `http://127.0.0.1:8648`。
 2. 在登录页依次点击“用户名”和“密码”输入框，输入当前管理员账号与密码。
 3. 点击“登录”。首次使用默认账号时，按页面要求先修改默认密码，然后重新登录。
-4. 登录后检查左侧一级导航，应看到“个人工作台”“Hermes 对话”“LLM Wiki”“公司数据”“定时报告”“记忆管理”。知识库只从“LLM Wiki”进入，不打开 `19828` 或 Tauri 窗口。
+4. 登录后检查左侧一级导航，应看到“个人工作台”“Hermes 对话”“LLM Wiki”“记忆管理”。知识库只从“LLM Wiki”进入，不打开 `19828` 或 Tauri 窗口。
 
 #### 第 2 步：新建或切换知识库项目
 
@@ -359,7 +345,7 @@ http://127.0.0.1:8648
 3. Hermes 会先搜索已批准 Wiki；回答中的事实性结论应带有类似 `【作者, 年份, p.N】` 的页码引用。
 4. 点击引用可通过本地受鉴权的 PDF Range 接口打开对应页。
 
-`research` Profile 不提供 Wiki 写入、终端、文件写入、公司数据或其他 MCP 工具。论文写入只能从知识库页面进入审核流程。
+`research` Profile 不提供 Wiki 写入、终端、文件写入或其他 MCP 工具。论文写入只能从知识库页面进入审核流程。
 
 ### 管理记忆
 
@@ -369,14 +355,6 @@ http://127.0.0.1:8648
 4. 保存时使用版本校验和原子写入；可查看 Markdown 预览、真实路径、更新时间、字符预算和历史版本，并恢复旧版本。
 
 对公网模型使用 `on` 模式前，确认记忆文件不含敏感信息。`clean` 不是匿名网络模式，它只保证不加载长期记忆；当前会话输入、`SOUL.md` 和工作区上下文仍会发送给你选择的模型端点。
-
-### 查看公司数据与报告
-
-1. 打开“公司数据”，点击“手动刷新”以采集当前模拟快照。
-2. 查看各指标的当前值、时间、阈值和异常状态；旧数据不会伪装成当天数据。
-3. 打开“定时报告”查看历史日报。工作日 09:00 会生成新报告；若采集失败，页面会留下失败记录而不是复用旧报告。
-
-当前内容是模拟连接器演示，尚未实现 CSV/Excel 或真实 API 导入。不要把公司生产数据、浏览器 Cookie、通用 SQL 账号或经营报表粘贴到 Hermes、LLM Wiki 或模型配置中。真实数据接入前请先阅读[公司数据导入与运行手册](docs/COMPANY-DATA.md)。
 
 ## 日常运维
 
@@ -424,7 +402,7 @@ Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 8648,19828,19827
 .\ops\Backup-AGNET.ps1
 ```
 
-备份包括 Hermes Profile/会话、Studio 会话数据库、记忆版本、Skills、Wiki 原文/正式页/审核状态和公司指标数据库。`.env`、Token、认证 JSON、私钥和其他凭据类文件会被排除；扫描到疑似明文 API Key 时备份会失败而不是带出密钥。
+备份包括 Hermes Profile/会话、Studio 会话数据库、记忆版本、Skills、Wiki 原文/正式页/审核状态。`.env`、Token、认证 JSON、私钥和其他凭据类文件会被排除；扫描到疑似明文 API Key 时备份会失败而不是带出密钥。
 
 恢复前先退出 Studio 和 LLM Wiki，再执行：
 
@@ -495,7 +473,7 @@ Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 8648,19828,19827
 
 ### Studio 能打开，但对话或 Wiki 问答不能生成
 
-这通常表示尚未配置获批准的模型端点或凭据。请检查 Studio 的 Models/Providers（Hermes 对话）以及 `LLM_WIKI_LLM_PROVIDER`、`LLM_WIKI_LLM_MODEL`、`LLM_WIKI_LLM_CUSTOM_ENDPOINT` 和 `LLM_WIKI_LLM_API_KEY`（Wiki 问答）；模型 Key 不包含在仓库或备份中。公司数据不能作为测试提示词发送到公网模型。
+这通常表示尚未配置获批准的模型端点或凭据。请检查 Studio 的 Models/Providers（Hermes 对话）以及 `LLM_WIKI_LLM_PROVIDER`、`LLM_WIKI_LLM_MODEL`、`LLM_WIKI_LLM_CUSTOM_ENDPOINT` 和 `LLM_WIKI_LLM_API_KEY`（Wiki 问答）；模型 Key 不包含在仓库或备份中。
 
 ## 交付与限制
 
@@ -503,13 +481,12 @@ Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 8648,19828,19827
 
 - 本仓库源码及本 README；不要提供你的 `ops/config.local.psd1`、`.env`、用户环境变量、Hermes Home、Studio 数据库、论文原文或备份目录。
 - 使用者自己的 LLM Wiki 项目目录和有权使用的论文 PDF；论文版权、个人数据和模型密钥由使用者负责。
-- 本 README 中的首次安装步骤，以及经批准的模型端点和公司 API 接入流程（如适用）。
+- 本 README 中的首次安装步骤，以及经批准的模型端点。
 
 当前版本的已知范围：
 
 - 是单用户、本机回环地址、非商用验证原型，不支持多用户、局域网访问或生产服务托管。
 - 不随仓库提供 DeepSeek/API Key；需要使用者在本机配置获批准的模型端点。
-- 公司数据只实现 `MockConnector`。真实连接器、实际经营数据和法定节假日调休尚未交付。
 - 100 篇 PDF 已做流程验证，但 50 个研究问题的检索质量、Top 5 命中率和引用质量验收仍需由实际领域数据完成。
 - 已在当前机器完成 LLM Wiki release 构建，并确认 `/api/v1/health` 返回 `retrievalMode=keyword_graph`。`target/` 构建物不随 Git 分发，其他源码使用者仍须在目标机器自行构建并使用 release 可执行文件。
 

@@ -2,20 +2,16 @@
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { NButton, NModal, useMessage, NTag } from "naive-ui";
+import { NModal } from "naive-ui";
 import { useAppStore } from "@/stores/hermes/app";
 import { usePersistentRecord } from '@/composables/usePersistentRecord'
 import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
 import ModelSelector from "@/components/layout/ModelSelector.vue";
 import ProfileSelector from "@/components/layout/ProfileSelector.vue";
 import LanguageSwitch from "@/components/layout/LanguageSwitch.vue";
-import ThemeSwitch from "@/components/layout/ThemeSwitch.vue";
-import VersionManagementModal from "@/components/layout/VersionManagementModal.vue";
-import { changelog } from "@/data/changelog";
 import { getStoredUsername, isStoredSuperAdmin } from "@/api/client";
 
 const { t } = useI18n();
-const message = useMessage();
 const route = useRoute();
 const router = useRouter();
 const appStore = useAppStore();
@@ -33,13 +29,30 @@ const isConversationRoute = computed(() => [
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
 const currentUsername = computed(() => getStoredUsername());
 const isVersionPreview = import.meta.env.VITE_HERMES_PREVIEW === '1';
-const isDesktopShell = computed(() =>
-  (window as typeof window & { hermesDesktop?: { isDesktop?: boolean } }).hermesDesktop?.isDesktop === true,
-);
-const showChangelog = ref(false);
-const showVersionManagement = ref(false);
-const showDockerUpdateTip = ref(false);
-const isDockerRuntime = computed(() => appStore.isDocker);
+const showAdvancedTools = ref(false);
+
+const advancedRouteNames = new Set([
+  'hermes.jobs',
+  'hermes.kanban',
+  'hermes.channels',
+  'hermes.skills',
+  'hermes.plugins',
+  'hermes.mcp',
+  'hermes.petdex',
+  'hermes.models',
+  'hermes.logs',
+  'hermes.usage',
+  'hermes.performance',
+  'hermes.journey',
+  'hermes.skillsUsage',
+  'hermes.codingAgents',
+  'hermes.versionPreview',
+  'hermes.devices',
+  'hermes.profiles',
+  'hermes.settings',
+]);
+
+const isAdvancedRoute = computed(() => advancedRouteNames.has(selectedKey.value));
 
 function hasRoute(name: string): boolean {
   return router.hasRoute(name);
@@ -73,43 +86,27 @@ function handleSidebarClick(event: MouseEvent) {
   }
 }
 
-async function handleUpdate() {
-  const ok = await appStore.doUpdate();
-  if (ok) {
-    message.success(t('sidebar.updateSuccess'), { duration: 5000 });
-  } else {
-    message.error(t('sidebar.updateFailed'));
-  }
-}
-
-function handleReloadClient() {
-  appStore.reloadClient();
-}
-
 function handleLogout() {
   localStorage.clear();
   window.location.reload();
 }
 
-function openChangelog() {
-  showChangelog.value = true;
+function openAdvancedTools() {
+  showAdvancedTools.value = true;
 }
 
-function openVersionManagement() {
-  showVersionManagement.value = true;
-}
+function handleAdvancedNavigation(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
 
-function handleDockerUpdateTip() {
-  showDockerUpdateTip.value = true;
-}
+  if (target?.closest('.route-link-item')) {
+    showAdvancedTools.value = false;
 
-function handleUpdateClick() {
-  if (isDockerRuntime.value) {
-    handleDockerUpdateTip();
-    return;
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches) {
+      appStore.closeSidebar();
+    }
   }
-  void handleUpdate();
 }
+
 </script>
 
 <template>
@@ -134,18 +131,6 @@ function handleUpdateClick() {
           </svg>
           <span>LLM Wiki</span>
         </RouteLinkItem>
-        <RouteLinkItem class="nav-item primary-nav-item" :to="{ name: 'hermes.companyMetrics' }" :active="selectedKey === 'hermes.companyMetrics'" title="公司数据">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
-          </svg>
-          <span>公司数据</span>
-        </RouteLinkItem>
-        <RouteLinkItem class="nav-item primary-nav-item" :to="{ name: 'hermes.reports' }" :active="selectedKey === 'hermes.reports'" title="定时报告">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" />
-          </svg>
-          <span>定时报告</span>
-        </RouteLinkItem>
         <RouteLinkItem class="nav-item primary-nav-item" :to="{ name: 'hermes.memory' }" :active="selectedKey === 'hermes.memory'" title="记忆管理">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />
@@ -154,14 +139,33 @@ function handleUpdateClick() {
         </RouteLinkItem>
       </div>
 
-      <div class="advanced-nav nav-group">
-        <div class="nav-group-label advanced-nav-label" @click="toggleGroup('advanced')">
-          <span>{{ appStore.sidebarCollapsed ? '工具' : '全部功能 / 高级工具' }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('advanced') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        <div v-show="!isGroupCollapsed('advanced')" class="advanced-nav-groups">
+      <button
+        class="nav-item advanced-tools-trigger"
+        :class="{ active: isAdvancedRoute }"
+        type="button"
+        :title="t('sidebar.groupTools')"
+        @click="openAdvancedTools"
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 6h16" />
+          <path d="M4 12h16" />
+          <path d="M4 18h16" />
+          <circle cx="8" cy="6" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="16" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="10" cy="18" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+        <span>{{ t('sidebar.groupTools') }}</span>
+      </button>
+
+      <NModal
+        v-model:show="showAdvancedTools"
+        preset="card"
+        :title="t('sidebar.groupTools')"
+        style="width: min(560px, calc(100vw - 32px));"
+      >
+        <div class="advanced-tools-modal-content" @click="handleAdvancedNavigation">
+          <div class="advanced-nav nav-group">
+            <div class="advanced-nav-groups">
       <!-- Agent -->
       <div class="nav-group">
         <div class="nav-group-label" @click="toggleGroup('agent')">
@@ -364,7 +368,9 @@ function handleUpdateClick() {
         </div>
       </div>
         </div>
-      </div>
+        </div>
+        </div>
+      </NModal>
     </nav>
 
     <ProfileSelector />
@@ -397,57 +403,6 @@ function handleUpdateClick() {
         </div>
         <LanguageSwitch />
       </div>
-      <div class="version-info">
-        <div class="version-links">
-          <a class="sidebar-footer-link" href="https://github.com/EKKOLearnAI/hermes-studio" target="_blank" rel="noopener noreferrer" title="GitHub">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-          </a>
-          <a class="sidebar-footer-link" href="https://hermes-studio.ai/" target="_blank" rel="noopener noreferrer" title="Website">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          </a>
-        </div>
-        <span
-          class="version-text"
-          role="button"
-          tabindex="0"
-          @click="openChangelog"
-          @keydown.enter="openChangelog"
-          @keydown.space.prevent="openChangelog"
-        >
-          Studio v{{ appStore.serverVersion || "0.1.0" }}
-        </span>
-        <ThemeSwitch />
-      </div>
-      <NButton
-        v-if="isDesktopShell"
-        type="primary"
-        size="tiny"
-        block
-        class="update-btn version-management-btn"
-        :class="{ 'has-update': appStore.updateAvailable }"
-        @click="openVersionManagement"
-      >
-        <span class="version-management-label">
-          {{ t('sidebar.versionManagement') }}
-          <span class="version-update-label">{{ t('sidebar.updateAvailableLabel') }}</span>
-        </span>
-      </NButton>
-      <NButton v-if="appStore.clientOutdated" type="warning" size="tiny" block class="update-btn" @click="handleReloadClient">
-        {{ t('sidebar.reloadClientVersion', { version: appStore.serverVersion }) }}
-      </NButton>
-      <NButton
-        v-else-if="appStore.updateAvailable"
-        type="primary"
-        size="tiny"
-        block
-        class="update-btn"
-        :loading="!isDockerRuntime && appStore.updating"
-        @click="handleUpdateClick"
-      >
-        {{ !isDockerRuntime && appStore.updating
-          ? t('sidebar.updating')
-          : t('sidebar.updateVersion', { version: appStore.latestVersion }) }}
-      </NButton>
     </div>
 
     <div class="sidebar-top-actions">
@@ -466,33 +421,6 @@ function handleUpdateClick() {
       </button>
     </div>
 
-    <NModal v-model:show="showChangelog" preset="dialog" :title="t('sidebar.changelog')" style="width: 520px;">
-      <div class="changelog-list">
-        <div v-for="entry in changelog" :key="entry.version" class="changelog-version-block">
-          <div class="changelog-version-header">
-            <span class="changelog-version-tag">v{{ entry.version }}</span>
-            <span class="changelog-date">{{ entry.date }}</span>
-          </div>
-          <ul class="changelog-changes">
-            <li v-for="(change, idx) in entry.changes" :key="idx">{{ t(change) }}</li>
-          </ul>
-        </div>
-      </div>
-    </NModal>
-    <VersionManagementModal v-if="isDesktopShell" v-model:show="showVersionManagement" />
-
-    <NModal v-model:show="showDockerUpdateTip" preset="dialog" :title="t('sidebar.dockerUpdateTitle')" style="width: 480px;">
-      <div class="docker-update-modal">
-        <p>{{ t('sidebar.dockerUpdateGuide') }}</p>
-        <div class="docker-update-commands">
-          <code class="docker-command">docker compose pull</code>
-          <code class="docker-command">docker compose up -d --force-recreate</code>
-        </div>
-        <p class="docker-update-note">
-          <NTag size="small" type="info" :bordered="false">{{ t('sidebar.dockerUpdateNote') }}</NTag>
-        </p>
-      </div>
-    </NModal>
   </aside>
 </template>
 
@@ -539,14 +467,23 @@ function handleUpdateClick() {
   font-weight: 500;
 }
 
-.advanced-nav {
+.advanced-tools-trigger {
   margin-top: 2px;
+  flex-shrink: 0;
 }
 
-.advanced-nav-label {
-  padding-top: 6px;
-  text-transform: none;
-  letter-spacing: 0;
+.advanced-tools-modal-content {
+  max-height: min(70vh, 680px);
+  overflow-y: auto;
+  padding: 4px 0;
+
+  .advanced-nav {
+    margin-top: 0;
+  }
+}
+
+.advanced-nav {
+  margin-top: 2px;
 }
 
 .advanced-nav-groups {
@@ -734,134 +671,6 @@ function handleUpdateClick() {
   white-space: nowrap;
 }
 
-.version-info {
-  padding: 2px 0 8px 12px;
-  font-size: 11px;
-  color: $text-muted;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  overflow: hidden;
-}
-
-.version-links {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 6px;
-}
-
-.sidebar-footer-link {
-  color: $text-muted;
-  display: flex;
-  align-items: center;
-  transition: color $transition-fast;
-
-  &:hover {
-    color: $text-primary;
-  }
-}
-
-.version-text {
-  flex: 0 0 auto;
-  overflow: visible;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color $transition-fast;
-
-  &:hover {
-    color: $accent-primary;
-  }
-}
-
-.version-info :deep(.theme-switch-container) {
-  flex-shrink: 0;
-}
-
-.update-btn {
-  margin: 4px 0 0;
-  border-radius: $radius-sm;
-}
-
-.version-management-btn {
-  .version-management-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .version-update-label {
-    display: none;
-    flex: 0 0 auto;
-    color: inherit;
-    font-size: 11px;
-    font-weight: 600;
-  }
-
-  &.has-update .version-update-label {
-    display: inline;
-  }
-}
-
-.changelog-list {
-  max-height: min(70vh, 640px);
-  overflow-y: auto;
-}
-
-.changelog-version-block {
-  margin-bottom: 20px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.changelog-version-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.changelog-version-tag {
-  font-weight: 600;
-  font-size: 14px;
-  color: $text-primary;
-  font-family: $font-code;
-}
-
-.changelog-date {
-  font-size: 12px;
-  color: $text-muted;
-}
-
-.changelog-changes {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-
-  li {
-    font-size: 13px;
-    color: $text-secondary;
-    padding: 4px 0 4px 16px;
-    position: relative;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 12px;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: $text-muted;
-    }
-  }
-}
-
 // ─── Collapsed sidebar (icon-rail mode) ─────────────────────────
 
 @media (min-width: $breakpoint-mobile + 1px) {
@@ -944,9 +753,7 @@ function handleUpdateClick() {
       padding-top: 8px;
     }
 
-    .status-row,
-    .version-info,
-    .update-btn {
+    .status-row {
       display: none;
     }
 
@@ -1000,39 +807,6 @@ function handleUpdateClick() {
     .input-sm {
       width: 90px;
     }
-  }
-}
-
-.docker-update-modal {
-  p {
-    margin: 12px 0;
-    font-size: 14px;
-    line-height: 1.6;
-    color: $text-secondary;
-  }
-
-  .docker-update-commands {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin: 16px 0;
-  }
-
-  .docker-command {
-    display: block;
-    padding: 10px 14px;
-    background: $code-bg;
-    border-radius: $radius-sm;
-    font-family: $font-code;
-    font-size: 13px;
-    color: $text-primary;
-    user-select: all;
-    cursor: text;
-    border: 1px solid $border-color;
-  }
-
-  .docker-update-note {
-    margin-top: 16px;
   }
 }
 

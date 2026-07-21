@@ -111,14 +111,6 @@ function Get-AGNETStudioDataHome {
     return Expand-AGNETPath -Path ([string]$Config.StudioDataHome)
 }
 
-function Get-AGNETMetricsDbPath {
-    param([hashtable]$Config)
-    if (-not [string]::IsNullOrWhiteSpace([string]$Config.CompanyMetricsDbPath)) {
-        return Expand-AGNETPath -Path ([string]$Config.CompanyMetricsDbPath)
-    }
-    return Join-Path (Get-AGNETStudioDataHome -Config $Config) "company-metrics.sqlite"
-}
-
 function Get-AGNETManagedWikiProjectsRoot {
     param([hashtable]$Config)
     if (-not [string]::IsNullOrWhiteSpace([string]$Config.LlmWikiManagedProjectsHome)) {

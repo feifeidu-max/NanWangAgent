@@ -1,7 +1,6 @@
 import { getApiKey, request } from './client'
 
 export type ServiceStatus = 'ok' | 'degraded' | 'down' | 'unavailable' | 'unknown'
-export type DataRunStatus = ServiceStatus | 'success' | 'failed' | 'not_run'
 
 export interface ServiceHealth {
   name: string
@@ -18,15 +17,6 @@ export interface WorkbenchSummary {
     candidates: number
     serviceOk: boolean
     todayPapers?: number
-  }
-  company: {
-    metricCount: number
-    lastUpdated: string | null
-    status: DataRunStatus
-  }
-  reports: {
-    nextRun: string | null
-    lastStatus: string | null
   }
   services: ServiceHealth[]
 }
@@ -142,41 +132,6 @@ export interface KnowledgeWorkspace {
   }
 }
 
-export type MetricDirection = 'higher_better' | 'lower_better' | 'neutral'
-
-export interface CompanyMetric {
-  id: string
-  name: string
-  value: number | string | null
-  unit: string
-  direction: MetricDirection
-  status: ServiceStatus | 'normal' | 'warning' | 'critical'
-  previousValue?: number | string | null
-  changePercent?: number | null
-  sourceTime?: string | null
-  refreshedAt?: string | null
-  definitionVersion?: string | null
-}
-
-export interface CompanyMetricsSummary {
-  status: DataRunStatus
-  lastUpdated: string | null
-  metrics: CompanyMetric[]
-  error?: string | null
-}
-
-export interface CompanyReport {
-  id: string
-  reportDate: string
-  status: 'success' | 'failed' | 'partial' | string
-  generatedAt: string | null
-  title?: string | null
-  summary?: string | null
-  metricCount?: number
-  abnormalCount?: number
-  error?: string | null
-}
-
 type UnknownRecord = Record<string, unknown>
 
 function asRecord(value: unknown): UnknownRecord {
@@ -219,11 +174,6 @@ function normalizeEvidenceLocator(value: unknown): EvidenceLocator | null {
 
 function asServiceStatus(value: unknown): ServiceStatus {
   return value === 'ok' || value === 'degraded' || value === 'down' || value === 'unavailable' ? value : 'unknown'
-}
-
-function asDataRunStatus(value: unknown): DataRunStatus {
-  if (value === 'success' || value === 'failed' || value === 'not_run') return value
-  return asServiceStatus(value)
 }
 
 function arrayFromResponse(value: unknown, key: string): unknown[] {
@@ -300,49 +250,6 @@ function normalizeKnowledgeProject(value: unknown): KnowledgeProject {
     name: asString(item.name, '未命名知识库'),
     path: asString(item.path),
     current: item.current === true,
-  }
-}
-
-function normalizeMetric(value: unknown): CompanyMetric {
-  const item = asRecord(value)
-  const definition = asRecord(item.definition)
-  const metricValue = asRecord(item.value)
-  const rawStatus = asString(item.status, 'unknown')
-  const validStatus = ['ok', 'degraded', 'down', 'unknown', 'normal', 'warning', 'critical'].includes(rawStatus)
-  const rawDirection = asString(item.direction ?? definition.betterDirection ?? definition.better_direction, 'neutral')
-  const normalizedDirection = rawDirection === 'higher' ? 'higher_better'
-    : rawDirection === 'lower' ? 'lower_better'
-      : rawDirection
-  return {
-    id: asString(item.id ?? item.metricId ?? item.metric_id ?? definition.id ?? item.name),
-    name: asString(item.name ?? definition.name, '未命名指标'),
-    value: typeof item.value === 'number' || typeof item.value === 'string'
-      ? item.value
-      : typeof metricValue.value === 'number' || typeof metricValue.value === 'string'
-        ? metricValue.value
-        : null,
-    unit: asString(item.unit ?? definition.unit),
-    direction: normalizedDirection === 'higher_better' || normalizedDirection === 'lower_better' ? normalizedDirection : 'neutral',
-    status: validStatus ? rawStatus as CompanyMetric['status'] : 'unknown',
-    previousValue: typeof item.previousValue === 'number' || typeof item.previousValue === 'string'
-      ? item.previousValue
-      : typeof item.previous_value === 'number' || typeof item.previous_value === 'string'
-        ? item.previous_value
-        : null,
-    changePercent: asNullableNumber(item.changePercent ?? item.change_percent),
-    sourceTime: asNullableString(item.sourceTime ?? item.source_time ?? metricValue.sourceTimestamp ?? metricValue.source_timestamp),
-    refreshedAt: asNullableString(item.refreshedAt ?? item.refreshed_at),
-    definitionVersion: asNullableString(item.definitionVersion ?? item.definition_version ?? definition.definitionVersion ?? definition.definition_version),
-  }
-}
-
-function normalizeCompanySummary(value: unknown): CompanyMetricsSummary {
-  const data = asRecord(value)
-  return {
-    status: asDataRunStatus(data.status),
-    lastUpdated: asNullableString(data.lastUpdated ?? data.last_updated),
-    metrics: arrayFromResponse(value, 'metrics').map(normalizeMetric),
-    error: asNullableString(data.error),
   }
 }
 
@@ -497,32 +404,5 @@ export async function selectKnowledgeProject(projectId: string): Promise<void> {
   await request<unknown>('/api/knowledge/workspace/select', {
     method: 'POST',
     body: JSON.stringify({ projectId }),
-  })
-}
-
-export async function fetchCompanyMetricsSummary(): Promise<CompanyMetricsSummary> {
-  return normalizeCompanySummary(await request<unknown>('/api/company-metrics/summary'))
-}
-
-export async function refreshCompanyMetrics(): Promise<CompanyMetricsSummary> {
-  await request<unknown>('/api/company-metrics/refresh', { method: 'POST' })
-  return fetchCompanyMetricsSummary()
-}
-
-export async function listCompanyReports(): Promise<CompanyReport[]> {
-  const result = await request<unknown>('/api/company-metrics/reports')
-  return arrayFromResponse(result, 'reports').map((value) => {
-    const item = asRecord(value)
-    return {
-      id: asString(item.id ?? item.reportDate ?? item.report_date),
-      reportDate: asString(item.reportDate ?? item.report_date),
-      status: asString(item.status, 'failed'),
-      generatedAt: asNullableString(item.generatedAt ?? item.generated_at),
-      title: asNullableString(item.title),
-      summary: asNullableString(item.summary ?? item.content ?? item.markdown),
-      metricCount: asNumber(item.metricCount ?? item.metric_count, Array.isArray(item.metrics) ? item.metrics.length : 0),
-      abnormalCount: asNumber(item.abnormalCount ?? item.abnormal_count ?? item.anomalyCount ?? item.anomaly_count, 0),
-      error: asNullableString(item.error),
-    }
   })
 }

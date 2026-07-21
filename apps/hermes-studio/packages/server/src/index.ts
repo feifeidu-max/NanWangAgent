@@ -35,7 +35,6 @@ import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from './middleware/sta
 import { userAuthMiddleware } from './middleware/user-auth'
 import { createCorsOriginResolver, securityHeaders } from './security'
 import type { ShutdownHandler } from './services/shutdown'
-import { startCompanyMetricsScheduler } from './services/company-metrics/scheduler'
 
 // Injected by esbuild at build time; fallback to reading package.json in dev mode
 declare const __APP_VERSION__: string
@@ -374,9 +373,6 @@ export async function bootstrap() {
   const activeProfile = process.env.PROFILE || 'default'
   sessionDeleter.start(activeProfile)
   console.log('[bootstrap] session deleter started, profile=%s', activeProfile)
-
-  startCompanyMetricsScheduler()
-  console.log('[bootstrap] company metrics scheduler started')
 
   // Catch-all: destroy upgrade requests not handled by terminal or Socket.IO
   servers.forEach((httpServer) => {

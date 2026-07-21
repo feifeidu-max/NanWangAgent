@@ -72,14 +72,6 @@ function openApiRelay() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
         <span>LLM Wiki</span>
       </RouteLinkItem>
-      <RouteLinkItem class="workspace-shortcut" :to="{ name: 'hermes.companyMetrics' }" title="公司数据">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
-        <span>公司数据</span>
-      </RouteLinkItem>
-      <RouteLinkItem class="workspace-shortcut" :to="{ name: 'hermes.reports' }" title="定时报告">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>
-        <span>报告</span>
-      </RouteLinkItem>
       <RouteLinkItem class="workspace-shortcut" :to="{ name: 'hermes.memory' }" title="记忆管理">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" /></svg>
         <span>记忆</span>
