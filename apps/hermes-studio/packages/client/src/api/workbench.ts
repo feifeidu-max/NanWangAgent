@@ -172,10 +172,6 @@ function normalizeEvidenceLocator(value: unknown): EvidenceLocator | null {
   }
 }
 
-function asServiceStatus(value: unknown): ServiceStatus {
-  return value === 'ok' || value === 'degraded' || value === 'down' || value === 'unavailable' ? value : 'unknown'
-}
-
 function arrayFromResponse(value: unknown, key: string): unknown[] {
   if (Array.isArray(value)) return value
   const record = asRecord(value)
