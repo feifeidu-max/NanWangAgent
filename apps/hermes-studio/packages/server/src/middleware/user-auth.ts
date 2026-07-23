@@ -3,7 +3,9 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { getToken } from '../services/auth'
 import {
   DEFAULT_PASSWORD,
+  DEFAULT_USERNAME,
   findUserById,
+  findUserByUsername,
   listUserProfiles,
   touchUserLogin,
   userCanAccessProfile,
@@ -201,6 +203,10 @@ export function toAuthenticatedUser(user: Pick<UserRecord, 'id' | 'username' | '
 }
 
 export async function authenticateUserToken(token: string): Promise<AuthenticatedUser | null> {
+  if (!(await isAuthEnabled())) {
+    return getDefaultSuperAdminUser()
+  }
+
   const secret = await getJwtSecret()
 
   const payload = token ? verifyUserJwt(token, secret) : null
@@ -212,12 +218,33 @@ export async function authenticateUserToken(token: string): Promise<Authenticate
   return toAuthenticatedUser(user)
 }
 
+let cachedDefaultUser: AuthenticatedUser | null = null
+
+function getDefaultSuperAdminUser(): AuthenticatedUser {
+  if (cachedDefaultUser) return cachedDefaultUser
+  const record = findUserByUsername(DEFAULT_USERNAME)
+  const base = record
+    ? { id: record.id, username: record.username, role: record.role }
+    : { id: 0, username: DEFAULT_USERNAME, role: 'super_admin' as UserRole }
+  cachedDefaultUser = toAuthenticatedUser(base)
+  return cachedDefaultUser
+}
+
+/**
+ * Auth is DISABLED by default (open / no-login mode) for local single-user use.
+ * Set HERMES_WEB_UI_ENABLE_AUTH=true to re-enable username/password login.
+ */
 export async function isAuthEnabled(): Promise<boolean> {
-  await getJwtSecret()
-  return true
+  return process.env.HERMES_WEB_UI_ENABLE_AUTH === 'true'
 }
 
 export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
+  if (!(await isAuthEnabled())) {
+    ctx.state.user = getDefaultSuperAdminUser()
+    await next()
+    return
+  }
+
   if (!isProtectedHttpPath(ctx.path)) {
     await next()
     return
@@ -256,6 +283,10 @@ const CREDENTIAL_CHANGE_PATHS = new Set([
 ])
 
 export async function requireCredentialChange(ctx: Context, next: Next): Promise<void> {
+  if (!(await isAuthEnabled())) {
+    await next()
+    return
+  }
   const userId = ctx.state.user?.id
   if (!userId || process.env.HERMES_DESKTOP === 'true' || CREDENTIAL_CHANGE_PATHS.has(ctx.path)) {
     await next()

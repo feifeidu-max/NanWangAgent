@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import router from './router'
 import { i18nReady } from './i18n'
 import App from './App.vue'
+import { initAuthMode } from './api/client'
 import './styles/global.scss'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
@@ -44,6 +45,7 @@ if (urlToken) {
 
 async function mountApp(): Promise<void> {
   const i18n = await i18nReady
+  await initAuthMode()
   const app = createApp(App)
   app.use(createPinia())
   app.use(i18n)

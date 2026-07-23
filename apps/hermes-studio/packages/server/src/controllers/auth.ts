@@ -21,7 +21,7 @@ import {
   type UserRecord,
   type UserStatus,
 } from '../db/hermes/users-store'
-import { issueUserJwt } from '../middleware/user-auth'
+import { issueUserJwt, isAuthEnabled } from '../middleware/user-auth'
 import { listProfileNamesFromDisk } from '../services/hermes/hermes-profile'
 import { startOutboundRelayClient, stopOutboundRelayClient } from '../services/global-agent/outbound-relay-client'
 import { getLanEndpointKind } from '../services/lan-discovery'
@@ -33,9 +33,11 @@ import { config } from '../config'
  * Check if username/password login is configured (public).
  */
 export async function authStatus(ctx: Context) {
+  const enabled = await isAuthEnabled()
   ctx.body = {
-    hasPasswordLogin: true,
+    hasPasswordLogin: enabled,
     hasUsers: countUsers() > 0,
+    authDisabled: !enabled,
   }
 }
 

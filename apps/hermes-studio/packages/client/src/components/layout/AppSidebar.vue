@@ -9,7 +9,7 @@ import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
 import ModelSelector from "@/components/layout/ModelSelector.vue";
 import ProfileSelector from "@/components/layout/ProfileSelector.vue";
 import LanguageSwitch from "@/components/layout/LanguageSwitch.vue";
-import { getStoredUsername, isStoredSuperAdmin } from "@/api/client";
+import { getStoredUsername, isStoredSuperAdmin, isAuthOpenMode } from "@/api/client";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -377,7 +377,7 @@ function handleAdvancedNavigation(event: MouseEvent) {
     <ModelSelector />
 
     <div class="sidebar-footer">
-      <button class="nav-item logout-item" @click="handleLogout">
+      <button v-if="!isAuthOpenMode()" class="nav-item logout-item" @click="handleLogout">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
           <polyline points="16 17 21 12 16 7" />

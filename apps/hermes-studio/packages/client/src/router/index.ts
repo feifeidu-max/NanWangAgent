@@ -194,27 +194,16 @@ async function ensureDesktopAuth(): Promise<void> {
   }
 }
 
-function isDesktopShell(): boolean {
-  return (window as typeof window & {
-    hermesDesktop?: { isDesktop?: boolean }
-  }).hermesDesktop?.isDesktop === true
-}
-
 router.beforeEach(async (to, _from, next) => {
   await ensureDesktopAuth()
 
-  // Public pages don't need auth
-  if (to.meta.public) {
-    // Already has key, skip login
-    if (to.name === 'login' && hasApiKey() && !isDesktopShell()) {
-      next({ path: '/hermes/workbench' })
-      return
-    }
-    next()
+  // The login page is never shown — always enter the workbench.
+  if (to.name === 'login') {
+    next({ path: '/hermes/workbench' })
     return
   }
 
-  // All other pages require token
+  // In open (no-login) mode hasApiKey() is always true.
   if (!hasApiKey()) {
     next({ name: 'login' })
     return

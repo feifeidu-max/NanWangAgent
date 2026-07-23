@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { NButton, NModal } from "naive-ui";
 import { fetchCurrentUser } from "@/api/auth";
-import { getApiKey } from "@/api/client";
+import { getApiKey, isAuthOpenMode } from "@/api/client";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -18,6 +18,11 @@ function isDesktopShell(): boolean {
 }
 
 async function checkDefaultCredentials() {
+  if (isAuthOpenMode()) {
+    show.value = false;
+    return;
+  }
+
   if (isDesktopShell()) {
     show.value = false;
     return;

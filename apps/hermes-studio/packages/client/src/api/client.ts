@@ -24,6 +24,37 @@ function getBaseUrl(): string {
   return localStorage.getItem('hermes_server_url') || DEFAULT_BASE_URL
 }
 
+let _authOpenMode = false
+
+export function isAuthOpenMode(): boolean {
+  return _authOpenMode
+}
+
+export function setAuthOpenMode(value: boolean): void {
+  _authOpenMode = value
+  if (value) {
+    try { localStorage.setItem('hermes_api_key', 'open') } catch {}
+  }
+}
+
+/**
+ * Resolve whether the server runs in open (no-login) mode by calling the
+ * public /api/auth/status endpoint. Must run BEFORE the router resolves so
+ * the navigation guards treat the app as already authenticated.
+ */
+export async function initAuthMode(): Promise<void> {
+  try {
+    const base = getBaseUrl()
+    const res = await fetch(`${base}/api/auth/status`)
+    if (res.ok) {
+      const data = await res.json() as { authDisabled?: boolean }
+      if (data.authDisabled) setAuthOpenMode(true)
+    }
+  } catch {
+    // Server not ready or offline — fall back to the normal login flow.
+  }
+}
+
 export function getApiKey(): string {
   return localStorage.getItem('hermes_api_key') || ''
 }
@@ -46,12 +77,13 @@ function clearAuthSessionState() {
 }
 
 export function hasApiKey(): boolean {
-  return !!getApiKey()
+  return _authOpenMode || !!getApiKey()
 }
 
 export type StoredUserRole = 'super_admin' | 'admin'
 
 export function getStoredUserRole(): StoredUserRole | null {
+  if (_authOpenMode) return 'super_admin'
   const token = getApiKey()
   const payload = token.split('.')[1]
   if (!payload) return null
@@ -66,10 +98,11 @@ export function getStoredUserRole(): StoredUserRole | null {
 }
 
 export function isStoredSuperAdmin(): boolean {
-  return getStoredUserRole() === 'super_admin'
+  return _authOpenMode || getStoredUserRole() === 'super_admin'
 }
 
 export function getStoredUsername(): string | null {
+  if (_authOpenMode) return 'admin'
   const token = getApiKey()
   const payload = token.split('.')[1]
   if (!payload) return null
@@ -186,6 +219,9 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     !path.startsWith('/v1/')
 
   if (res.status === 401 && isLocalBff) {
+    if (_authOpenMode) {
+      throw new Error('Unauthorized')
+    }
     clearAuthSessionState()
     emitAuthNotice('expired')
     if (router.currentRoute.value.name !== 'login') {
@@ -198,10 +234,14 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     const text = await res.text().catch(() => '')
     if (res.status === 403 && isLocalBff) {
       if (text.includes('User is disabled or does not exist')) {
-        clearAuthSessionState()
-        emitAuthNotice('expired')
-        if (router.currentRoute.value.name !== 'login') {
-          router.replace({ name: 'login' })
+        if (_authOpenMode) {
+          emitAuthNotice('forbidden')
+        } else {
+          clearAuthSessionState()
+          emitAuthNotice('expired')
+          if (router.currentRoute.value.name !== 'login') {
+            router.replace({ name: 'login' })
+          }
         }
       } else {
         emitAuthNotice('forbidden')

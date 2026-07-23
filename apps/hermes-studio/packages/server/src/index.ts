@@ -32,7 +32,7 @@ import { PetStateSocketServer } from './services/hermes/pet-state-socket'
 import { logger } from './services/logger'
 import { createStaticCompressionMiddleware } from './middleware/static-compression'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from './middleware/static-cache'
-import { userAuthMiddleware } from './middleware/user-auth'
+import { userAuthMiddleware, isAuthEnabled } from './middleware/user-auth'
 import { createCorsOriginResolver, securityHeaders } from './security'
 import type { ShutdownHandler } from './services/shutdown'
 
@@ -288,6 +288,17 @@ export async function bootstrap() {
   const { initAllStores } = await import('./db/hermes/init')
   initAllStores()
   console.log('[bootstrap] all stores initialized')
+
+  // Open (no-login) mode: ensure a super-admin exists so handlers that read
+  // ctx.state.user / current user keep working without a login screen.
+  if (!isAuthEnabled()) {
+    try {
+      const { countUsers, createDefaultSuperAdmin } = await import('./db/hermes/users-store')
+      if (countUsers() === 0) createDefaultSuperAdmin()
+    } catch (err) {
+      logger.warn(err, '[bootstrap] failed to seed default super admin')
+    }
+  }
 
   app.use(securityHeaders())
   app.use(cors({ origin: createCorsOriginResolver(config.corsOrigins) }))
