@@ -1,11 +1,84 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { NAlert, NButton, NEmpty, NSpin, NTag } from 'naive-ui'
 import { fetchWorkbenchSummary, type ServiceStatus, type WorkbenchSummary } from '@/api/workbench'
+import { getStoredUsername } from '@/api/client'
 
 const loading = ref(false)
 const error = ref('')
 const summary = ref<WorkbenchSummary | null>(null)
+const username = ref(getStoredUsername())
+
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  if (hour < 11) return '早上好，'
+  if (hour < 14) return '中午好，'
+  if (hour < 18) return '下午好，'
+  return '晚上好，'
+})
+
+interface FeatureCard {
+  key: string
+  title: string
+  desc: string
+  meta: string
+  to: { name: string; query?: Record<string, string> }
+  icon: 'book' | 'chat' | 'memory' | 'history' | 'agent' | 'settings'
+}
+
+const featureCards = computed<FeatureCard[]>(() => {
+  const k = summary.value?.knowledge
+  return [
+    {
+      key: 'knowledge',
+      title: '个人知识库',
+      desc: '管理本地知识库与论文，沉淀可信内容。',
+      meta: k ? `可信 ${k.trusted ?? 0} 篇` : '本地知识',
+      to: { name: 'hermes.knowledge', query: { tab: 'management' } },
+      icon: 'book',
+    },
+    {
+      key: 'chat',
+      title: 'Hermes 对话',
+      desc: '与智能体对话，处理复杂任务与工作流。',
+      meta: '开始新对话',
+      to: { name: 'hermes.chat' },
+      icon: 'chat',
+    },
+    {
+      key: 'memory',
+      title: '记忆管理',
+      desc: '查看与编辑智能体的长期记忆。',
+      meta: '长期记忆',
+      to: { name: 'hermes.memory' },
+      icon: 'memory',
+    },
+    {
+      key: 'history',
+      title: '会话历史',
+      desc: '回顾过往的对话与任务记录。',
+      meta: '回顾过往',
+      to: { name: 'hermes.history' },
+      icon: 'history',
+    },
+    {
+      key: 'agent',
+      title: '全局智能体',
+      desc: '调用跨会话的通用智能体能力。',
+      meta: '跨会话',
+      to: { name: 'hermes.globalAgent' },
+      icon: 'agent',
+    },
+    {
+      key: 'settings',
+      title: '模型与设置',
+      desc: '配置模型、外观与系统偏好。',
+      meta: '配置',
+      to: { name: 'hermes.settings' },
+      icon: 'settings',
+    },
+  ]
+})
 
 function formatDateTime(value: string | null | undefined, fallback = '暂无数据'): string {
   if (!value) return fallback
@@ -60,22 +133,6 @@ onMounted(() => {
 
 <template>
   <div class="workbench-page">
-    <header class="page-header">
-      <div class="workbench-page-heading">
-        <h2 class="header-title">个人工作台</h2>
-        <p>论文知识与记忆的本地概览</p>
-      </div>
-      <NButton size="small" quaternary :loading="loading" aria-label="刷新工作台" @click="loadSummary">
-        <template #icon>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
-        </template>
-        刷新
-      </NButton>
-    </header>
-
     <div class="workbench-content">
       <NAlert v-if="error" class="workbench-alert" type="error" :title="summary ? '部分数据刷新失败' : '无法加载工作台'">
         {{ error }}
@@ -86,27 +143,73 @@ onMounted(() => {
         <NSpin size="medium" description="正在汇总本地服务状态…" />
       </div>
 
-      <template v-else-if="summary">
-        <section class="workbench-section" aria-labelledby="workbench-overview-title">
-          <div class="workbench-section-header">
-            <h3 id="workbench-overview-title" class="workbench-section-title">今日概览</h3>
-            <span class="workbench-section-note">仅展示本机已同步数据</span>
-          </div>
-          <div class="workbench-summary-grid">
-            <RouterLink class="summary-tile" :to="{ name: 'hermes.knowledge', query: { tab: 'drafts' } }">
-              <span class="summary-label">今日论文</span>
-              <strong class="summary-value">{{ summary.knowledge.todayPapers ?? 0 }}</strong>
-              <span class="summary-meta">{{ summary.knowledge.awaitingReview ?? 0 }} 篇待审核</span>
-            </RouterLink>
-            <RouterLink class="summary-tile" :to="{ name: 'hermes.knowledge', query: { tab: 'trusted' } }">
-              <span class="summary-label">可信知识库</span>
-              <strong class="summary-value">{{ summary.knowledge.trusted }}</strong>
-              <span class="summary-meta">{{ summary.knowledge.candidates }} 篇待读候选</span>
-            </RouterLink>
+      <template v-else>
+        <section class="home-hero" aria-label="欢迎">
+          <button class="home-hero-refresh" type="button" :disabled="loading" :aria-busy="loading" @click="loadSummary">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            刷新
+          </button>
+          <p class="home-eyebrow">Workspace</p>
+          <h1 class="home-title">{{ greeting }}<template v-if="username">{{ username }}</template></h1>
+          <p class="home-subtitle">在一处管理你的知识库、对话与记忆。</p>
+          <div class="home-stats" v-if="summary">
+            <div class="home-stat">
+              <span class="home-stat-value">{{ summary.knowledge.todayPapers ?? 0 }}</span>
+              <span class="home-stat-label">今日论文</span>
+            </div>
+            <div class="home-stat">
+              <span class="home-stat-value">{{ summary.knowledge.trusted ?? 0 }}</span>
+              <span class="home-stat-label">可信知识库</span>
+            </div>
+            <div class="home-stat">
+              <span class="home-stat-value">{{ summary.knowledge.awaitingReview ?? 0 }}</span>
+              <span class="home-stat-label">待审核</span>
+            </div>
           </div>
         </section>
 
-        <section class="workbench-section" aria-labelledby="service-status-title">
+        <nav class="home-cards" aria-label="功能入口">
+          <RouterLink
+            v-for="card in featureCards"
+            :key="card.key"
+            class="feature-card"
+            :to="card.to"
+          >
+            <span class="feature-icon" aria-hidden="true">
+              <svg v-if="card.icon === 'book'" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <svg v-else-if="card.icon === 'chat'" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <svg v-else-if="card.icon === 'memory'" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />
+              </svg>
+              <svg v-else-if="card.icon === 'history'" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 8v4l3 2" />
+              </svg>
+              <svg v-else-if="card.icon === 'agent'" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="5" y="8" width="14" height="10" rx="2" /><path d="M12 8V5" /><circle cx="12" cy="4" r="1.4" fill="currentColor" stroke="none" /><path d="M9.5 13h.01" /><path d="M14.5 13h.01" />
+              </svg>
+              <svg v-else width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </span>
+            <div class="feature-body">
+              <h3 class="feature-title">{{ card.title }}</h3>
+              <p class="feature-desc">{{ card.desc }}</p>
+            </div>
+            <span class="feature-meta">{{ card.meta }}</span>
+            <svg class="feature-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </RouterLink>
+        </nav>
+
+        <section v-if="summary" class="workbench-section" aria-labelledby="service-status-title">
           <div class="workbench-section-header">
             <h3 id="service-status-title" class="workbench-section-title">本地服务</h3>
             <NTag :type="summary.knowledge.serviceOk ? 'success' : 'error'" size="small" :bordered="false">
@@ -130,7 +233,7 @@ onMounted(() => {
         </section>
       </template>
 
-      <div v-else-if="!error" class="workbench-state">
+      <div v-if="!loading && !summary && !error" class="workbench-state">
         <NEmpty description="暂无工作台数据" />
       </div>
     </div>
@@ -141,10 +244,7 @@ onMounted(() => {
 @use '@/styles/workbench';
 @use '@/styles/variables' as *;
 
-.summary-value--date {
-  font-family: $font-ui;
-  font-size: 17px;
-  line-height: 1.65;
-  letter-spacing: 0;
+.feature-body {
+  min-width: 0;
 }
 </style>

@@ -54,6 +54,18 @@
   --error-rgb: 198, 40, 40;
   --warning-rgb: 245, 127, 23;
   --accent-info-rgb: 74, 144, 217;
+
+  // Brand — theme blue (primary actions, icons, hero accent)
+  --brand-deep: #003a75;
+  --brand: #005bac;
+  --brand-bright: #2e86d6;
+  --brand-tint: #eaf3fb;
+  --brand-line: #c9dcef;
+
+  // Brand RGB components
+  --brand-rgb: 0, 91, 172;
+  --brand-deep-rgb: 0, 58, 117;
+  --brand-tint-rgb: 234, 243, 251;
 }
 
 .dark {
@@ -106,6 +118,18 @@
   --error-rgb: 239, 83, 80;
   --warning-rgb: 255, 183, 77;
   --accent-info-rgb: 107, 163, 214;
+
+  // Brand — theme blue (lightened for dark surfaces)
+  --brand-deep: #123a66;
+  --brand: #4f9be0;
+  --brand-bright: #76b6ea;
+  --brand-tint: #15273c;
+  --brand-line: #244a73;
+
+  // Brand RGB components
+  --brand-rgb: 79, 155, 224;
+  --brand-deep-rgb: 18, 58, 102;
+  --brand-tint-rgb: 21, 39, 60;
 }
 
 .comic {
@@ -130,7 +154,6 @@
 }
 
 // ─── SCSS Variables (delegate to CSS custom properties) ────────
-
 // Backgrounds
 $bg-primary: var(--bg-primary);
 $bg-secondary: var(--bg-secondary);
@@ -185,3 +208,10 @@ $radius-lg: 8px;
 // Transition
 $transition-fast: 0.15s ease;
 $transition-normal: 0.25s ease;
+
+// Brand
+$brand-deep: var(--brand-deep);
+$brand: var(--brand);
+$brand-bright: var(--brand-bright);
+$brand-tint: var(--brand-tint);
+$brand-line: var(--brand-line);
