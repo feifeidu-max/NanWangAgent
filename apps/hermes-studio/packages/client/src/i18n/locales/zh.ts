@@ -1739,6 +1739,8 @@ export default {
       saved: '已保存',
       saveFailed: '保存失败',
       noProviders: '暂无已配置的模型',
+      currentDefault: '当前默认模型底座：{model}（{provider}）',
+      otherProviders: '其他提供商的 API Key',
     },
     display: {
       streaming: '流式响应',

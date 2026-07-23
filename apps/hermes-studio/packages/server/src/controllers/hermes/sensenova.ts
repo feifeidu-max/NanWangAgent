@@ -209,6 +209,7 @@ export async function saveConfig(ctx: any) {
       config.model.provider = SENSENOVA_PROVIDER
       delete config.model.base_url
       delete config.model.api_key
+      delete config.model.name
       return config
     })
 

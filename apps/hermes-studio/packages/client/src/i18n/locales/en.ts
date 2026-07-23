@@ -1721,6 +1721,8 @@ export default {
       saved: 'Saved',
       saveFailed: 'Save failed',
       noProviders: 'No providers configured',
+      currentDefault: 'Current default model: {model} ({provider})',
+      otherProviders: 'API keys for other providers',
       sensenova: {
         title: 'SenseNova model connection',
         description: 'Use the OpenAI-compatible SenseNova endpoint for Hermes. The API key is stored locally and never shown again.',

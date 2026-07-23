@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { NInput, NButton, NSpin, NEmpty, useMessage } from 'naive-ui'
 import { useModelsStore } from '@/stores/hermes/models'
 import { updateProvider } from '@/api/hermes/system'
@@ -8,6 +8,11 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 const modelsStore = useModelsStore()
 const message = useMessage()
+
+// SenseNova is managed by the dedicated SenseNovaSettings panel (its key
+// lives in the profile .env, not in config.yaml). Showing it here too would
+// duplicate the control and route key edits to the wrong store.
+const modelList = computed(() => modelsStore.providers.filter(g => g.provider !== 'custom:sensenova'))
 
 const savingKey = ref<string | null>(null)
 const editKeys = ref<Record<string, string>>({})
@@ -66,12 +71,13 @@ async function handleSaveCustom(providerKey: string) {
 
 <template>
   <section class="settings-section">
+    <h4 class="section-subtitle">{{ t('settings.models.otherProviders') }}</h4>
     <NSpin :show="modelsStore.loading">
-      <div v-if="modelsStore.providers.length === 0" class="empty-hint">
+      <div v-if="modelList.length === 0" class="empty-hint">
         <NEmpty :description="t('settings.models.noProviders')" />
       </div>
 
-      <div v-for="g in modelsStore.providers" :key="g.provider" class="provider-section">
+      <div v-for="g in modelList" :key="g.provider" class="provider-section">
         <div class="provider-header">
           <h4 class="provider-name">{{ g.label }}</h4>
           <span class="type-badge" :class="isCustom(g.provider) ? 'custom' : 'builtin'">
@@ -132,6 +138,13 @@ async function handleSaveCustom(providerKey: string) {
 
 .settings-section {
   margin-top: 16px;
+}
+
+.section-subtitle {
+  margin:0 0 12px;
+  font-size:13px;
+  font-weight:600;
+  color:$text-secondary;
 }
 
 .empty-hint {

@@ -23,9 +23,17 @@ import VoiceSettings from "@/components/hermes/settings/VoiceSettings.vue";
 import SenseNovaSettings from "@/components/hermes/settings/SenseNovaSettings.vue";
 import { isStoredSuperAdmin } from "@/api/client";
 import { useProfilesStore } from "@/stores/hermes/profiles";
+import { useModelsStore } from "@/stores/hermes/models";
 
 const settingsStore = useSettingsStore();
 const profilesStore = useProfilesStore();
+const modelsStore = useModelsStore();
+
+function providerLabel(p: string): string {
+  const found = modelsStore.providers.find(g => g.provider === p)
+  if (found?.label) return found.label
+  return p.startsWith('custom:') ? p.slice('custom:'.length) : p
+}
 const { t } = useI18n();
 const canManageUsers = isStoredSuperAdmin();
 const route = useRoute();
@@ -119,6 +127,10 @@ onMounted(() => {
             <PrivacySettings />
           </NTabPane>
           <NTabPane name="models" :tab="t('settings.tabs.models')">
+            <div class="models-default-banner" v-if="modelsStore.defaultProvider">
+              <span class="banner-dot" />
+              <span class="banner-text">{{ t('settings.models.currentDefault', { model: modelsStore.defaultModel, provider: providerLabel(modelsStore.defaultProvider) }) }}</span>
+            </div>
             <SenseNovaSettings />
             <ModelSettings />
           </NTabPane>
@@ -144,5 +156,26 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+}
+
+.models-default-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  border-radius: $radius-md;
+  color: $text-primary;
+  font-size: 13px;
+
+  .banner-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: $accent-primary;
+    flex-shrink: 0;
+  }
 }
 </style>
